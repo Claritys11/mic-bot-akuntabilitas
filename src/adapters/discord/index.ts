@@ -302,11 +302,15 @@ export function createDiscordAdapter(core: Core, opts: { token: string; guildId?
   client.once(Events.ClientReady, async (c) => {
     console.log(`[discord] online sebagai ${c.user.tag}`);
     const guildIds = opts.guildId ? [opts.guildId] : [...c.guilds.cache.keys()];
-    if (!guildIds.length) {
-      const invite = `https://discord.com/oauth2/authorize?client_id=${c.application.id}&scope=bot+applications.commands&permissions=309237763136`;
-      console.log(`[discord] bot belum ada di server mana pun. Undang lewat:\n  ${invite}`);
+    const invite = (guildId?: string) =>
+      `https://discord.com/oauth2/authorize?client_id=${c.application.id}&scope=bot+applications.commands&permissions=309237763136` +
+      (guildId ? `&guild_id=${guildId}&disable_guild_select=true` : '');
+    if (opts.guildId && !c.guilds.cache.has(opts.guildId)) {
+      console.log(`[discord] bot belum ada di server ${opts.guildId}. Undang lewat:\n  ${invite(opts.guildId)}`);
+    } else if (!guildIds.length) {
+      console.log(`[discord] bot belum ada di server mana pun. Undang lewat:\n  ${invite()}`);
     }
-    for (const id of guildIds) await register(c.application.id, id);
+    for (const id of guildIds.filter((g) => c.guilds.cache.has(g))) await register(c.application.id, id);
   });
 
   // Diundang ke server baru saat bot berjalan → langsung daftarkan command di sana.

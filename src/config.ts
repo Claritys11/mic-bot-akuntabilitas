@@ -13,7 +13,9 @@ const EnvSchema = z.object({
   LLM_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().default('https://openrouter.ai/api/v1')),
   LLM_API_KEY: optionalString,
   OPENROUTER_API_KEY: optionalString,
-  LLM_TEXT_MODEL: z.preprocess(emptyToUndefined, z.string().default('nousresearch/hermes-4-70b')),
+  // Dipakai otomatis kalau key utama ditolak / habis kuota / rate limit.
+  BACKUP_OPENROUTER_API_KEY: optionalString,
+  LLM_TEXT_MODEL: z.preprocess(emptyToUndefined, z.string().default('nousresearch/hermes-4-405b')),
   LLM_VISION_MODEL: z.preprocess(emptyToUndefined, z.string().default('google/gemini-2.5-flash')),
   LLM_VISION_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
   LLM_VISION_API_KEY: optionalString,
@@ -28,6 +30,7 @@ const EnvSchema = z.object({
 export interface LLMEndpoint {
   baseUrl: string;
   apiKey: string | undefined;
+  backupApiKey?: string;
   model: string;
 }
 
@@ -51,14 +54,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   const e = parsed.data;
   const textKey = e.LLM_API_KEY ?? e.OPENROUTER_API_KEY;
+  const visionBase = e.LLM_VISION_BASE_URL ?? e.LLM_BASE_URL;
+  // Key cadangan OpenRouter hanya dikirim ke OpenRouter, jangan ke endpoint lain (mis. Hermes lokal).
+  const backupFor = (baseUrl: string) => (new URL(baseUrl).hostname.endsWith('openrouter.ai') ? e.BACKUP_OPENROUTER_API_KEY : undefined);
   return {
     discord: { token: e.DISCORD_TOKEN, clientId: e.DISCORD_CLIENT_ID, guildId: e.DISCORD_GUILD_ID },
     mongoUri: e.MONGODB_URI,
     llm: {
-      text: { baseUrl: e.LLM_BASE_URL, apiKey: textKey, model: e.LLM_TEXT_MODEL },
+      text: { baseUrl: e.LLM_BASE_URL, apiKey: textKey ?? e.BACKUP_OPENROUTER_API_KEY, backupApiKey: backupFor(e.LLM_BASE_URL), model: e.LLM_TEXT_MODEL },
       vision: {
-        baseUrl: e.LLM_VISION_BASE_URL ?? e.LLM_BASE_URL,
-        apiKey: e.LLM_VISION_API_KEY ?? (e.LLM_VISION_BASE_URL ? e.OPENROUTER_API_KEY : textKey),
+        baseUrl: visionBase,
+        apiKey: (e.LLM_VISION_API_KEY ?? (e.LLM_VISION_BASE_URL ? e.OPENROUTER_API_KEY : textKey)) ?? backupFor(visionBase),
+        backupApiKey: backupFor(visionBase),
         model: e.LLM_VISION_MODEL,
       },
       jsonMode: e.LLM_JSON_MODE === 'true',

@@ -59,8 +59,20 @@ Bot memakai klien **OpenAI-compatible** (`src/llm/openrouter.ts`), jadi backend-
 lewat `LLM_BASE_URL`.
 
 **Mode A — OpenRouter + model Hermes (default, disarankan untuk privasi).**
-`LLM_TEXT_MODEL=nousresearch/hermes-4-70b`. Setiap panggilan stateless, jadi tidak ada memori sama
+`LLM_TEXT_MODEL=nousresearch/hermes-4-405b`. Setiap panggilan stateless, jadi tidak ada memori sama
 sekali dan tidak bercampur dengan Hermes Agent milikmu.
+
+**Cadangan otomatis.** `LLM_TEXT_MODEL` / `LLM_VISION_MODEL` boleh berisi beberapa model dipisah koma,
+dan `BACKUP_OPENROUTER_API_KEY` dipakai kalau key utama ditolak. Bot mencoba tiap model × key
+berurutan; kombinasi yang kena limit diistirahatkan 10 menit (rate limit: 1 menit). Contoh:
+
+```
+LLM_TEXT_MODEL=nousresearch/hermes-4-405b,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free
+LLM_VISION_MODEL=google/gemini-2.5-flash,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free
+```
+
+Model berbayar butuh kredit OpenRouter **dan** batas belanja key > $0 (Settings → Keys). Model `:free`
+jalan tanpa kredit tapi sering kena rate limit, jadi taruh di belakang sebagai cadangan.
 
 **Mode B — Hermes Agent lokal, profil `mic` yang fresh.**
 Profil Hermes punya `HERMES_HOME` sendiri: memori, sesi, dan skill terpisah. Gateway Discord utamamu

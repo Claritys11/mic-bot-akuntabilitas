@@ -13,6 +13,17 @@ interface CompletionResponse {
   error?: { message?: string };
 }
 
+const MIN_MAX_TOKENS = 2000;
+
+class LLMHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export class OpenRouterProvider implements LLMProvider {
   readonly enabled: boolean;
   private stats: LLMUsage = { calls: 0, promptTokens: 0, completionTokens: 0 };
@@ -24,6 +35,38 @@ export class OpenRouterProvider implements LLMProvider {
     private readonly timeoutMs: number,
   ) {
     this.enabled = Boolean(text.apiKey);
+  }
+
+  /** model|key → waktu (ms) sampai boleh dicoba lagi. */
+  private cooldown = new Map<string, number>();
+
+  /**
+   * Coba setiap model (LLM_*_MODEL boleh dipisah koma) × key (utama lalu cadangan) berurutan.
+   * Kombinasi yang ditolak (kuota/limit) diistirahatkan supaya tidak membuang request di tiap pesan.
+   */
+  private async complete(ep: LLMEndpoint, messages: WireMessage[], opts: ChatOptions): Promise<string> {
+    const models = ep.model.split(',').map((m) => m.trim()).filter(Boolean);
+    const keys = [ep.apiKey, ep.backupApiKey].filter((k, i, all): k is string => Boolean(k) && all.indexOf(k) === i);
+    const attempts = models.flatMap((model) => keys.map((key, ki) => ({ model, key, slot: `${model}|${ki}` })));
+    const at = Date.now();
+    const ready = attempts.filter((a) => (this.cooldown.get(a.slot) ?? 0) <= at);
+    let lastErr: unknown = new Error('LLM tidak punya API key');
+    // Semua sedang istirahat → tetap coba semuanya daripada langsung gagal.
+    for (const a of ready.length ? ready : attempts) {
+      try {
+        const out = await this.request(ep, a.model, a.key, messages, opts);
+        this.cooldown.delete(a.slot);
+        return out;
+      } catch (err) {
+        lastErr = err;
+        const status = err instanceof LLMHttpError ? err.status : 0;
+        const rest = [401, 402, 403].includes(status) ? 10 * 60_000 : status === 429 || status === 404 ? 60_000 : 0;
+        if (rest) this.cooldown.set(a.slot, Date.now() + rest);
+        const keyName = a.key === ep.apiKey ? 'key utama' : 'key cadangan';
+        console.warn(`[llm] ${a.model} (${keyName}) gagal: ${(err instanceof Error ? err.message : String(err)).slice(0, 120)}`);
+      }
+    }
+    throw lastErr;
   }
 
   static fromConfig(config: Config): OpenRouterProvider {
@@ -40,7 +83,7 @@ export class OpenRouterProvider implements LLMProvider {
   }
 
   async vision(prompt: string, image: { data: Uint8Array; mimeType: string }, opts: ChatOptions = {}): Promise<string> {
-    if (!this.visionEp.apiKey) throw new Error('LLM vision tidak dikonfigurasi');
+    if (!this.visionEp.apiKey && !this.visionEp.backupApiKey) throw new Error('LLM vision tidak dikonfigurasi');
     const dataUrl = `data:${image.mimeType};base64,${Buffer.from(image.data).toString('base64')}`;
     const messages: WireMessage[] = [
       {
@@ -54,12 +97,14 @@ export class OpenRouterProvider implements LLMProvider {
     return this.complete(this.visionEp, messages, opts);
   }
 
-  private async complete(ep: LLMEndpoint, messages: WireMessage[], opts: ChatOptions): Promise<string> {
+  private async request(ep: LLMEndpoint, model: string, apiKey: string, messages: WireMessage[], opts: ChatOptions): Promise<string> {
     const body: Record<string, unknown> = {
-      model: ep.model,
+      model,
       messages,
       temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 800,
+      // Model "reasoning" (mis. beberapa model gratis) menghabiskan token untuk berpikir dulu;
+      // batas terlalu kecil → jawaban kosong. Hanya batas atas, bukan yang ditagih.
+      max_tokens: Math.max(opts.maxTokens ?? 800, MIN_MAX_TOKENS),
     };
     if (opts.json && this.jsonMode) body.response_format = { type: 'json_object' };
 
@@ -67,7 +112,7 @@ export class OpenRouterProvider implements LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${ep.apiKey ?? ''}`,
+        Authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': 'https://github.com/mic-bot-akuntabilitas',
         'X-Title': 'MIC Bot Akuntabilitas Kelas',
       },
@@ -75,7 +120,7 @@ export class OpenRouterProvider implements LLMProvider {
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     const data = (await res.json().catch(() => ({}))) as CompletionResponse;
-    if (!res.ok) throw new Error(`LLM HTTP ${res.status}: ${data.error?.message ?? res.statusText}`);
+    if (!res.ok) throw new LLMHttpError(res.status, `LLM HTTP ${res.status}: ${data.error?.message ?? res.statusText}`);
 
     this.stats.calls += 1;
     this.stats.promptTokens += data.usage?.prompt_tokens ?? 0;

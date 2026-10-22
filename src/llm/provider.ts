@@ -44,9 +44,16 @@ export function extractJson(text: string): unknown {
   }
 }
 
+/** Model kecil kadang menulis kunci dengan spasi (`" tanggal"`); rapikan sebelum divalidasi. */
+function trimKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(trimKeys);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k.trim(), trimKeys(x)]));
+  return v;
+}
+
 /** Parse + validasi zod. Gagal → null (jangan crash; lihat CLAUDE.md). */
 export function parseJson<T>(schema: z.ZodType<T>, text: string): T | null {
-  const result = schema.safeParse(extractJson(text));
+  const result = schema.safeParse(trimKeys(extractJson(text)));
   return result.success ? result.data : null;
 }
 
