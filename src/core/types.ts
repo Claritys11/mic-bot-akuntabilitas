@@ -148,6 +148,11 @@ export function renderTokens(
   return text.replace(TOKEN_RE, (_, kind: string, id: string) => (kind === '@' ? render.user(id) : render.channel(id)));
 }
 
+/** Netralkan "{{" di teks dari user/LLM supaya tidak bisa menyelipkan token mention palsu. */
+export function sanitize(text: string): string {
+  return text.replace(/\{\{/g, '{\u200b{');
+}
+
 export function memberKey(m: Pick<Member, 'platform' | 'platformUserId'>): string {
   return `${m.platform}:${m.platformUserId}`;
 }

@@ -8,6 +8,7 @@ import { findMemberByName, getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { formatWIB, now } from '../time.ts';
 import {
   mention,
+  sanitize,
   type Action,
   type ActionEvent,
   type Card,
@@ -103,7 +104,7 @@ async function extract(llm: LLMProvider, msg: IncomingMessage): Promise<{ ex: Ex
       }),
       { maxTokens: 300 },
     );
-    if (ex) return { ex: { ...ex, ownerName: ex.ownerName ?? undefined, deadlineText: ex.deadlineText ?? undefined }, source: 'llm' };
+    if (ex) return { ex: { ...ex, task: sanitize(ex.task), ownerName: ex.ownerName ?? undefined, deadlineText: ex.deadlineText ?? undefined }, source: 'llm' };
   }
   const ex = heuristicExtract(msg.text);
   return ex ? { ex, source: 'heuristic' } : null;
@@ -224,6 +225,8 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
   }
 
   if (verb === 'ok') {
+    // Pembuat boleh ubah/batalkan, tapi hanya pemilik (atau pengurus) yang bisa mengikat dirinya pada janji.
+    if (!ev.isAdmin && p.owner.platformUserId !== ev.actor.platformUserId) return deny(`Hanya ${p.owner.displayName} yang bisa mengonfirmasi janji ini.`);
     const confirmedAt = now();
     const stage = p.deadline ? initialStage(p.deadline, confirmedAt) : 'none';
     const updated = await PromiseModel.findByIdAndUpdate(

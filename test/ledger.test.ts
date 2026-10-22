@@ -124,3 +124,11 @@ describe('verifikasi bukti transfer (realistis, bukan forensik)', () => {
     expect(verifyProof({ ...base, tanggal: null }, ctx)).toContain('date_unreadable');
   });
 });
+
+describe('keamanan ekspor CSV', () => {
+  test('sel yang diawali = + - @ dinetralkan', () => {
+    const csv = toCsv([tx({ memberName: '=HYPERLINK("http://x")' })]);
+    expect(csv).toContain(`"'=HYPERLINK(""http://x"")"`);
+    expect(toCsv([tx({ amount: -5000 })])).toContain(',-5000,'); // angka negatif tetap angka
+  });
+});

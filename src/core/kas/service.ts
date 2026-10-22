@@ -10,6 +10,7 @@ import { formatWIB, now } from '../time.ts';
 import {
   channelRef,
   mention,
+  sanitize,
   type ActionEvent,
   type Attachment,
   type Card,
@@ -61,10 +62,11 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
 
   const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, refId: 1 }).lean();
   const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
+  const clean = (v: string | null | undefined) => (v ? sanitize(v).slice(0, 100) : null);
   const proof = {
     nominal: extracted?.nominal ?? null,
-    tanggal: extracted?.tanggal ?? null,
-    refId: extracted?.refId ?? null,
+    tanggal: clean(extracted?.tanggal),
+    refId: clean(extracted?.refId),
     imageHash,
     isTransferProof: extracted?.isTransferProof,
   };
@@ -85,8 +87,8 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     imageHash,
     nominal: proof.nominal,
     transferDate: proof.tanggal,
-    bank: extracted?.bank ?? null,
-    sender: extracted?.pengirim ?? null,
+    bank: clean(extracted?.bank),
+    sender: clean(extracted?.pengirim),
     refId: proof.refId,
     flags,
     period: periodKey(transferAt > at ? at : transferAt, kasPeriod),
@@ -100,7 +102,7 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
       { name: 'Dari', value: mention(msg.author), inline: true },
       { name: 'Nominal', value: proof.nominal ? rupiah(proof.nominal) : '—', inline: true },
       { name: 'Tanggal', value: proof.tanggal ?? '—', inline: true },
-      { name: 'Bank/e-wallet', value: extracted?.bank ?? '—', inline: true },
+      { name: 'Bank/e-wallet', value: clean(extracted?.bank) ?? '—', inline: true },
       { name: 'Ref', value: proof.refId ?? '—', inline: true },
       { name: 'Periode', value: periodLabel(doc.period), inline: true },
     ],

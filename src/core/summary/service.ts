@@ -4,7 +4,7 @@ import { summaryPrompt } from '../../llm/prompts/summary.ts';
 import { chatJson, type LLMProvider } from '../../llm/provider.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { formatWIB, now } from '../time.ts';
-import type { CommandInvocation, IncomingMessage, Reply } from '../types.ts';
+import { sanitize, type CommandInvocation, type IncomingMessage, type Reply } from '../types.ts';
 
 // Pesan mentah hanya disimpan di buffer ber-TTL 48 jam (prinsip privasi), lalu hilang otomatis.
 
@@ -47,13 +47,13 @@ export async function rangkum(llm: LLMProvider, cmd: CommandInvocation): Promise
   const s = await chatJson(llm, SummarySchema, summaryPrompt(transcript, hours), { maxTokens: 700 });
   if (!s) return { reply: { text: 'Maaf, rangkuman gagal dibuat. Coba lagi sebentar ya.', private: true } };
 
-  const list = (xs: string[]) => (xs.length ? xs.slice(0, 5).map((x) => `• ${x}`).join('\n') : '—');
+  const list = (xs: string[]) => (xs.length ? xs.slice(0, 5).map((x) => `• ${sanitize(x)}`).join('\n') : '—');
   return {
     reply: {
       card: {
         title: `🧾 Rangkuman ${hours} jam terakhir`,
         tone: 'info',
-        description: s.ringkas,
+        description: sanitize(s.ringkas),
         fields: [
           { name: '✅ Keputusan', value: list(s.keputusan) },
           { name: '📝 Tugas baru', value: list(s.tugasBaru) },

@@ -8,6 +8,14 @@ import { pickNextOpportunity, relevance } from './relevance.ts';
 import { SEED_OPPORTUNITIES } from './seed.ts';
 
 const MAX_POSTS_PER_WEEK = 2;
+
+function isHttpsUrl(s: string): boolean {
+  try {
+    return new URL(s).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 const teamId = (id: string) => `o:team:${id}`;
 
 export async function seedOpportunities(at: Date): Promise<number> {
@@ -50,11 +58,12 @@ export async function collectOppPosts(at: Date): Promise<OutgoingMessage[]> {
   const opps = await OpportunityModel.find({ deadline: { $gt: at } }).lean<OpportunityDoc[]>();
   const out: OutgoingMessage[] = [];
   for (const g of groups) {
+    const visible = opps.filter((o) => o.groupId == null || o.groupId === g.groupId);
     const posts = await OppPostModel.find({ groupId: g.groupId }).lean();
     const recent = posts.filter((p) => p.postedAt.getTime() > at.getTime() - 7 * DAY_MS).length;
     if (recent >= MAX_POSTS_PER_WEEK) continue;
     const pick = pickNextOpportunity(
-      opps.map((o) => ({ ...o, id: String(o._id) })),
+      visible.map((o) => ({ ...o, id: String(o._id) })),
       g.major,
       new Set(posts.map((p) => String(p.opportunityId))),
       at,
@@ -79,7 +88,7 @@ export async function handleOppAction(ev: ActionEvent): Promise<Reply> {
   const id = ev.actionId.split(':')[2];
   if (!id || !isValidObjectId(id)) return { reply: { text: 'Info lomba tidak ditemukan.', private: true } };
   const o = await OpportunityModel.findById(id).lean<OpportunityDoc>();
-  if (!o) return { reply: { text: 'Info lomba tidak ditemukan.', private: true } };
+  if (!o || (o.groupId != null && o.groupId !== ev.groupId)) return { reply: { text: 'Info lomba tidak ditemukan.', private: true } };
 
   const at = now();
   const lead = o.deadline.getTime() - at.getTime() > 5 * DAY_MS ? 3 * DAY_MS : DAY_MS;
@@ -101,17 +110,21 @@ export async function lombaTambah(cmd: CommandInvocation): Promise<Reply> {
   const deadlineRaw = String(cmd.options.deadline ?? '').trim();
   const m = deadlineRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!title || !m) return { reply: { text: 'Judul wajib & deadline format YYYY-MM-DD.', private: true } };
+  const link = String(cmd.options.link ?? '').trim();
+  if (!isHttpsUrl(link)) return { reply: { text: 'Link harus URL https://', private: true } };
   const deadline = new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, 16, 59)); // 23:59 WIB
   const tags = String(cmd.options.tag ?? 'umum').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+  // Selalu terikat ke server ini: admin satu server tidak bisa menimpa/menyiarkan ke server lain.
   const doc = await OpportunityModel.findOneAndUpdate(
-    { title },
+    { title, groupId: cmd.groupId },
     {
       $set: {
         title,
         organizer: String(cmd.options.penyelenggara ?? '-'),
         deadline,
         tags,
-        link: String(cmd.options.link ?? '-'),
+        link,
+        groupId: cmd.groupId,
         description: String(cmd.options.deskripsi ?? ''),
         sponsored: cmd.options.promosi === true,
         addedBy: cmd.actor.platformUserId,
@@ -126,7 +139,7 @@ export async function lombaList(cmd: CommandInvocation): Promise<Reply> {
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   const at = now();
-  const opps = await OpportunityModel.find({ deadline: { $gt: at } }).lean<OpportunityDoc[]>();
+  const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, cmd.groupId] } }).lean<OpportunityDoc[]>();
   const ranked = opps
     .map((o) => ({ o, s: relevance(o.tags, group.major) }))
     .filter((x) => x.s >= 2)

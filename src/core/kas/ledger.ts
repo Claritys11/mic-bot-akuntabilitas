@@ -111,14 +111,16 @@ export function paidStatus(
 }
 
 const csvCell = (v: string | number) => {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = String(v);
+  // Cegah formula injection saat dibuka di Excel/Sheets (nama anggota bisa diawali "=").
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n']/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 export function toCsv(entries: LedgerEntry[]): string {
-  const rows = [['tanggal', 'anggota', 'jenis', 'periode', 'nominal', 'catatan', 'id']];
+  const rows: (string | number)[][] = [['tanggal', 'anggota', 'jenis', 'periode', 'nominal', 'catatan', 'id']];
   for (const e of entries) {
-    rows.push([e.createdAt.toISOString(), e.memberName, e.kind, e.period, String(e.amount), e.note ?? '', e.id]);
+    rows.push([e.createdAt.toISOString(), e.memberName, e.kind, e.period, e.amount, e.note ?? '', e.id]);
   }
   return rows.map((r) => r.map(csvCell).join(',')).join('\n');
 }

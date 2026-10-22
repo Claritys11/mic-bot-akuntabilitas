@@ -6,7 +6,7 @@ import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps
 import { detectPromise, handlePromiseAction, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
-import { channelRef, type ActionEvent, type CommandInvocation, type FormSubmit, type IncomingMessage, type OutgoingMessage, type Reply, type SpeechLevel } from './types.ts';
+import { channelRef, sanitize, type ActionEvent, type Member, type OptionValue, type CommandInvocation, type FormSubmit, type IncomingMessage, type OutgoingMessage, type Reply, type SpeechLevel } from './types.ts';
 
 export interface Core {
   onMessage(msg: IncomingMessage): Promise<OutgoingMessage[]>;
@@ -16,6 +16,10 @@ export interface Core {
   /** Dipanggil scheduler: kumpulkan semua pesan terjadwal yang jatuh tempo. */
   tick(at?: Date): Promise<OutgoingMessage[]>;
 }
+
+const cleanMember = <T extends Member>(m: T): T => ({ ...m, displayName: sanitize(m.displayName) });
+const cleanOptions = (o: Record<string, OptionValue | undefined>) =>
+  Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'string' ? sanitize(v) : v]));
 
 const fail = (text: string): Reply => ({ reply: { text, private: true } });
 
@@ -66,7 +70,8 @@ export function createCore(llm: LLMProvider): Core {
   };
 
   return {
-    async onMessage(msg) {
+    async onMessage(raw) {
+      const msg = { ...raw, text: sanitize(raw.text), author: cleanMember(raw.author), mentions: raw.mentions.map(cleanMember) };
       const group = await getGroup(msg.platform, msg.groupId);
       if (!group) return [];
       await Promise.all([upsertMember(msg.author), bufferMessage(msg)]);
@@ -76,7 +81,8 @@ export function createCore(llm: LLMProvider): Core {
       return detectPromise(llm, msg, group);
     },
 
-    async onAction(ev) {
+    async onAction(raw) {
+      const ev = { ...raw, actor: cleanMember(raw.actor) };
       const prefix = ev.actionId.split(':')[0];
       if (prefix === 'p') return handlePromiseAction(ev);
       if (prefix === 'k') return handleKasAction(ev);
@@ -84,14 +90,16 @@ export function createCore(llm: LLMProvider): Core {
       return fail('Tombol ini sudah tidak berlaku.');
     },
 
-    async onForm(ev) {
+    async onForm(raw) {
+      const ev = { ...raw, actor: cleanMember(raw.actor), values: Object.fromEntries(Object.entries(raw.values).map(([k, v]) => [k, sanitize(v)])) };
       const prefix = ev.formId.split(':')[0];
       if (prefix === 'pf') return handlePromiseForm(ev);
       if (prefix === 'kf') return handleKasForm(ev);
       return fail('Form tidak dikenal.');
     },
 
-    async onCommand(cmd) {
+    async onCommand(raw) {
+      const cmd = { ...raw, actor: cleanMember(raw.actor), options: cleanOptions(raw.options) };
       const handler = commands[cmd.name];
       return handler ? handler(cmd) : fail(`Perintah ${cmd.name} belum tersedia.`);
     },

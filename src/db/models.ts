@@ -156,11 +156,13 @@ const OpportunitySchema = new Schema(
     link: { type: String, required: true },
     description: { type: String, default: '' },
     sponsored: { type: Boolean, default: false },
+    // null = kurasi global (seed operator bot); selain itu hanya untuk server yang menambahkan.
+    groupId: { type: String, default: null },
     addedBy: { type: String, default: 'seed' },
   },
   { timestamps: true },
 );
-OpportunitySchema.index({ title: 1 }, { unique: true });
+OpportunitySchema.index({ groupId: 1, title: 1 }, { unique: true });
 export const OpportunityModel = mongoose.model('Opportunity', OpportunitySchema);
 export type OpportunityDoc = InferSchemaType<typeof OpportunitySchema> & { _id: mongoose.Types.ObjectId };
 
