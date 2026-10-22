@@ -68,10 +68,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   };
 }
 
-export function requireDiscord(config: Config): { token: string; clientId: string; guildId?: string } {
-  const { token, clientId, guildId } = config.discord;
-  if (!token || !clientId) {
-    throw new Error('DISCORD_TOKEN dan DISCORD_CLIENT_ID wajib diisi untuk menjalankan bot Discord.');
-  }
-  return { token, clientId, guildId };
+export function requireDiscord(config: Config): { token: string; guildId?: string } {
+  const { token, guildId } = config.discord;
+  if (!token) throw new Error('DISCORD_TOKEN wajib diisi untuk menjalankan bot Discord.');
+  // DISCORD_CLIENT_ID tidak lagi wajib: application id dibaca dari sesi login.
+  return { token, guildId };
 }

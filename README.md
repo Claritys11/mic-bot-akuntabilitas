@@ -26,11 +26,11 @@ Bot ini terpisah dari bot Hermes utamamu, jadi token dan memorinya juga terpisah
 
 1. https://discord.com/developers/applications → **New Application** → tab **Bot** → *Reset Token* → salin ke `DISCORD_TOKEN`.
 2. Nyalakan **Message Content Intent** dan **Server Members Intent**.
-3. *General Information* → salin **Application ID** ke `DISCORD_CLIENT_ID`.
+3. `DISCORD_CLIENT_ID` opsional — Application ID dibaca otomatis saat login.
 4. Undang ke server dev: *OAuth2 → URL Generator* → scope `bot` + `applications.commands`; permission:
    View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Embed Links,
    Attach Files, Read Message History.
-5. Isi `DISCORD_GUILD_ID` dengan ID server dev supaya slash command langsung muncul.
+5. `DISCORD_GUILD_ID` opsional. Kosong = slash command didaftarkan per server tempat bot berada (langsung muncul). Kalau bot belum diundang ke server mana pun, log menampilkan link undangan.
 
 ### 2. Isi `.env`
 

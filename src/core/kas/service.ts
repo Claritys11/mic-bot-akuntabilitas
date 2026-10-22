@@ -215,7 +215,7 @@ export async function handleKasForm(ev: FormSubmit): Promise<Reply> {
   if (!group || !id || !isValidObjectId(id)) return { reply: { text: 'Data tidak ditemukan.', private: true } };
   if (!isTreasurer(group, ev)) return { reply: { text: 'Hanya bendahara yang bisa menyetujui.', private: true } };
   const nominal = Number((ev.values.nominal ?? '').replace(/[^\d]/g, ''));
-  if (!nominal) return { reply: { text: 'Nominal tidak valid.', private: true } };
+  if (!nominal || nominal > 100_000_000) return { reply: { text: 'Nominal tidak valid.', private: true } };
   return approve(id, nominal, ev, group);
 }
 

@@ -20,7 +20,23 @@ console.log(`[llm] ${llm.enabled ? `aktif → ${config.llm.text.baseUrl} (${conf
 
 const core = createCore(llm);
 const adapter = createDiscordAdapter(core, discord);
-await adapter.start();
+try {
+  await adapter.start();
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/disallowed intents/i.test(msg)) {
+    console.error(
+      '[discord] Intent belum diizinkan. Buka https://discord.com/developers/applications → aplikasi bot ini → Bot →\n' +
+        '          nyalakan "Server Members Intent" dan "Message Content Intent", simpan, lalu jalankan ulang.',
+    );
+  } else if (/invalid token|TokenInvalid/i.test(msg)) {
+    console.error('[discord] DISCORD_TOKEN ditolak Discord. Reset token di Developer Portal → Bot, lalu salin ulang ke .env.');
+  } else {
+    console.error('[discord] gagal login:', err);
+  }
+  await disconnectDb();
+  process.exit(1);
+}
 const stopScheduler = startScheduler(core, adapter.sender);
 
 const shutdown = async (signal: string) => {

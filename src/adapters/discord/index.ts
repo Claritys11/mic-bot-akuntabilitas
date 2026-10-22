@@ -137,12 +137,12 @@ export function buildSlashCommands() {
   });
 }
 
-async function registerCommands(token: string, clientId: string, guildId?: string) {
+/** Daftar per guild (langsung aktif), bukan global yang bisa butuh waktu lama untuk muncul. */
+async function registerCommands(token: string, clientId: string, guildId: string) {
   const rest = new REST().setToken(token);
   const body = buildSlashCommands();
-  if (guildId) await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body });
-  else await rest.put(Routes.applicationCommands(clientId), { body });
-  console.log(`[discord] ${body.length} slash command terdaftar ${guildId ? `di guild ${guildId}` : 'global'}`);
+  await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body });
+  console.log(`[discord] ${body.length} slash command terdaftar di guild ${guildId}`);
 }
 
 // ---------- Outbound: core → Discord ----------
@@ -283,7 +283,7 @@ export interface DiscordAdapter {
   stop(): Promise<void>;
 }
 
-export function createDiscordAdapter(core: Core, opts: { token: string; clientId: string; guildId?: string }): DiscordAdapter {
+export function createDiscordAdapter(core: Core, opts: { token: string; guildId?: string }): DiscordAdapter {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -296,9 +296,22 @@ export function createDiscordAdapter(core: Core, opts: { token: string; clientId
   });
   const sender = new DiscordSender(client);
 
+  const register = (clientId: string, guildId: string) =>
+    registerCommands(opts.token, clientId, guildId).catch((err) => console.error(`[discord] gagal daftar command di ${guildId}:`, err));
+
   client.once(Events.ClientReady, async (c) => {
     console.log(`[discord] online sebagai ${c.user.tag}`);
-    await registerCommands(opts.token, opts.clientId, opts.guildId).catch((err) => console.error('[discord] gagal daftar command:', err));
+    const guildIds = opts.guildId ? [opts.guildId] : [...c.guilds.cache.keys()];
+    if (!guildIds.length) {
+      const invite = `https://discord.com/oauth2/authorize?client_id=${c.application.id}&scope=bot+applications.commands&permissions=309237763136`;
+      console.log(`[discord] bot belum ada di server mana pun. Undang lewat:\n  ${invite}`);
+    }
+    for (const id of guildIds) await register(c.application.id, id);
+  });
+
+  // Diundang ke server baru saat bot berjalan → langsung daftarkan command di sana.
+  client.on(Events.GuildCreate, (g) => {
+    if (!opts.guildId || opts.guildId === g.id) void register(g.client.application.id, g.id);
   });
 
   client.on(Events.MessageCreate, async (msg) => {
