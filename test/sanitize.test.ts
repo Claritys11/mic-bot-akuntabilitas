@@ -8,3 +8,11 @@ test('teks user tidak bisa menyelipkan token mention', () => {
   expect(users).toEqual(['1']);
   expect(out).not.toContain('<@999>');
 });
+
+test('kurung kurawal beruntun juga dinetralkan', () => {
+  for (const evil of ['{{{@999}}', '{{{{@999}}}}', '{{#123}}', '{{{#123}}}']) {
+    const out = renderTokens(sanitize(evil), { user: () => 'PING', channel: () => 'CHAN' });
+    expect(out).not.toContain('PING');
+    expect(out).not.toContain('CHAN');
+  }
+});

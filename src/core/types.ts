@@ -150,7 +150,8 @@ export function renderTokens(
 
 /** Netralkan "{{" di teks dari user/LLM supaya tidak bisa menyelipkan token mention palsu. */
 export function sanitize(text: string): string {
-  return text.replace(/\{\{/g, '{\u200b{');
+  // Sisipkan pemisah setelah SETIAP "{" — mengganti pasangan saja bisa diakali dengan "{{{@id}}".
+  return text.replace(/\{/g, '{\u200b');
 }
 
 export function memberKey(m: Pick<Member, 'platform' | 'platformUserId'>): string {
