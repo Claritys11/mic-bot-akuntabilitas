@@ -1,0 +1,29 @@
+{
+  "name": "mic-bot-akuntabilitas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch index.ts",
+    "start": "bun index.ts",
+    "test": "bun test",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "simulate": "bun scripts/simulate.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "mongoose": "^9.11.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.4.3",
+    "eslint": "^10.13.0",
+    "typescript": "^6",
+    "typescript-eslint": "^8.72.0"
+  }
+}
