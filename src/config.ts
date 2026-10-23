@@ -15,8 +15,8 @@ const EnvSchema = z.object({
   OPENROUTER_API_KEY: optionalString,
   // Dipakai otomatis kalau key utama ditolak / habis kuota / rate limit.
   BACKUP_OPENROUTER_API_KEY: optionalString,
-  LLM_TEXT_MODEL: z.preprocess(emptyToUndefined, z.string().default('nousresearch/hermes-4-405b')),
-  LLM_VISION_MODEL: z.preprocess(emptyToUndefined, z.string().default('google/gemini-2.5-flash')),
+  LLM_TEXT_MODEL: z.preprocess(emptyToUndefined, z.string().default('dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free')),
+  LLM_VISION_MODEL: z.preprocess(emptyToUndefined, z.string().default('dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free')),
   LLM_VISION_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
   LLM_VISION_API_KEY: optionalString,
   // Hermes Agent API server tidak selalu mendukung response_format; matikan kalau perlu.

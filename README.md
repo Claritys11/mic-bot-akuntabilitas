@@ -58,17 +58,17 @@ Di Discord: `/setup kelas:"XI RPL 2" jurusan:RPL tutur:sopan channel_kas:#kas ch
 Bot memakai klien **OpenAI-compatible** (`src/llm/openrouter.ts`), jadi backend-nya cukup diganti
 lewat `LLM_BASE_URL`.
 
-**Mode A — OpenRouter + model Hermes (default, disarankan untuk privasi).**
-`LLM_TEXT_MODEL=nousresearch/hermes-4-405b`. Setiap panggilan stateless, jadi tidak ada memori sama
+**Mode A — OpenRouter (default, disarankan untuk privasi).** Dev memakai model `:free`; untuk prod
+ganti ke model berbayar, mis. `LLM_TEXT_MODEL=nousresearch/hermes-4-405b`. Setiap panggilan stateless, jadi tidak ada memori sama
 sekali dan tidak bercampur dengan Hermes Agent milikmu.
 
 **Cadangan otomatis.** `LLM_TEXT_MODEL` / `LLM_VISION_MODEL` boleh berisi beberapa model dipisah koma,
 dan `BACKUP_OPENROUTER_API_KEY` dipakai kalau key utama ditolak. Bot mencoba tiap model × key
-berurutan; kombinasi yang kena limit diistirahatkan 10 menit (rate limit: 1 menit). Contoh:
+berurutan; kombinasi yang kena limit diistirahatkan 10 menit (rate limit: 1 menit). Contoh prod:
 
 ```
-LLM_TEXT_MODEL=nousresearch/hermes-4-405b,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free
-LLM_VISION_MODEL=google/gemini-2.5-flash,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free
+LLM_TEXT_MODEL=nousresearch/hermes-4-405b,dots-studio/dots-3-note-preview:free
+LLM_VISION_MODEL=google/gemini-2.5-flash,dots-studio/dots-3-note-preview:free
 ```
 
 Model berbayar butuh kredit OpenRouter **dan** batas belanja key > $0 (Settings → Keys). Model `:free`
