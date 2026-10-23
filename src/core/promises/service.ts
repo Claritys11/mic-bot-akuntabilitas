@@ -205,7 +205,7 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
     const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'done', doneAt } }, { returnDocument: 'after' }).lean<PromiseDoc>();
     const late = p.deadline && doneAt > p.deadline;
     return {
-      update: { card: promiseCard(updated!, late ? '✅ Selesai (terlambat) — tetap terima kasih!' : '🎉 Selesai tepat waktu — terima kasih!', 'success') },
+      update: { card: promiseCard(updated!, late ? '✅ Selesai (terlambat) — tetap terima kasih!' : '🎉 Selesai tepat waktu — terima kasih!', 'success'), actions: [] },
       messages:
         p.status === 'overdue'
           ? [{ to: { kind: 'channel', channelId: p.channelId }, text: `Kabar baik: **${p.task}** dari ${mention(p.owner)} sudah selesai. Terima kasih 🙏` }]
@@ -221,7 +221,7 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
 
   if (verb === 'cancel' || verb === 'no') {
     const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'cancelled' } }, { returnDocument: 'after' }).lean<PromiseDoc>();
-    return { update: { text: '', card: { ...promiseCard(updated!, '❌ Bukan janji — tidak dicatat'), tone: 'warn' } } };
+    return { update: { text: '', card: { ...promiseCard(updated!, '❌ Bukan janji — tidak dicatat'), tone: 'warn' }, actions: [] } };
   }
 
   if (verb === 'ok') {

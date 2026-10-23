@@ -152,7 +152,8 @@ export async function handleOnboardingAction(ev: ActionEvent, ops: PlatformOps):
   if (!ev.isAdmin && o.interviewerId !== ev.actor.platformUserId) return deny('Yang bisa ngatur kelas cuma admin server ya 🙏');
 
   const [, verb, arg] = ev.actionId.split(':');
-  const done = (label: string) => ({ text: '', actions: [] as Action[], card: { title: label, tone: 'success' as const } });
+  // Pertanyaan tetap terlihat; tombol diganti kartu jawaban.
+  const done = (label: string) => ({ actions: [] as Action[], card: { title: label, tone: 'success' as const } });
 
   if (verb === 'start' && o.step === 'greet') {
     const next = await advance(o._id, 'kelas', { interviewerId: ev.actor.platformUserId });
