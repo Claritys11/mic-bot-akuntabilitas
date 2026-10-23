@@ -23,6 +23,8 @@ export interface Extraction {
   ownerName?: string;
   deadlineText?: string;
   confidence: number;
+  /** Kalimat balasan buatan LLM (pakai token @PEMILIK); heuristik tidak mengisinya. */
+  reply?: string;
 }
 
 const TIME_WORDS =

@@ -24,6 +24,7 @@ import {
 } from '../types.ts';
 import { parseRelativeDate } from './dateParser.ts';
 import { heuristicExtract, looksLikePromise, type Extraction } from './prefilter.ts';
+import { acceptLlmLine, askLine, cancelledLine, confirmedLine, doneLine, LABELS } from './voice.ts';
 
 const ExtractionSchema = z.object({
   isPromise: z.boolean(),
@@ -31,15 +32,11 @@ const ExtractionSchema = z.object({
   ownerName: z.string().nullish(),
   deadlineText: z.string().nullish(),
   confidence: z.number().min(0).max(1).default(0.5),
+  reply: z.string().nullish(),
 });
 
 const MIN_CONFIDENCE = 0.6;
 
-const ASK: Record<SpeechLevel, (who: string) => string> = {
-  santai: (who) => `${who}, ini janji kamu bukan? Konfirmasi dulu ya biar aku bisa ingetin 😄`,
-  sopan: (who) => `${who}, apakah ini janji Anda? Mohon dikonfirmasi agar bisa saya ingatkan 🙏`,
-  krama: (who) => `${who}, menapa menika janji panjenengan? Nyuwun dipunkonfirmasi supados saged kula engetaken 🙏`,
-};
 
 export const ids = {
   confirm: (id: string) => `p:ok:${id}`,
@@ -73,13 +70,21 @@ export function promiseCard(p: PromiseDoc, title: string, tone: Card['tone'] = '
   };
 }
 
-const confirmActions = (id: string): Action[] => [
-  { id: ids.confirm(id), label: '✅ Konfirmasi', kind: 'success' },
-  { id: ids.edit(id), label: '✏️ Ubah', kind: 'secondary' },
-  { id: ids.cancel(id), label: '❌ Bukan janji', kind: 'danger' },
+const confirmActions = (id: string, level: SpeechLevel = 'sopan'): Action[] => [
+  { id: ids.confirm(id), label: LABELS[level].confirm, kind: 'success' },
+  { id: ids.edit(id), label: LABELS[level].edit, kind: 'secondary' },
+  { id: ids.cancel(id), label: LABELS[level].cancel, kind: 'danger' },
 ];
 
-export const doneAction = (id: string): Action => ({ id: ids.done(id), label: '✅ Sudah selesai', kind: 'success' });
+export const doneAction = (id: string, level: SpeechLevel = 'sopan'): Action => ({ id: ids.done(id), label: LABELS[level].done, kind: 'success' });
+
+const activeActions = (id: string, level: SpeechLevel): Action[] => [
+  { id: ids.edit(id), label: LABELS[level].edit, kind: 'secondary' },
+  doneAction(id, level),
+];
+
+/** Baris kecil di bawah obrolan: apa yang dicatat + deadline hasil tafsiran (biar bisa dikoreksi). */
+const detailLine = (p: Pick<PromiseDoc, 'task' | 'deadline'>) => `_📝 ${p.task} · ⏰ ${deadlineLabel(p)}_`;
 
 /** Selesaikan deadline: hasil parser; kalau lewat dan tanpa jam, geser ke 23:59 hari itu. */
 export function resolveDeadline(text: string | null | undefined, at: Date): Date | null {
@@ -91,7 +96,7 @@ export function resolveDeadline(text: string | null | undefined, at: Date): Date
   return d > at ? d : null;
 }
 
-async function extract(llm: LLMProvider, msg: IncomingMessage): Promise<{ ex: Extraction; source: 'llm' | 'heuristic' } | null> {
+async function extract(llm: LLMProvider, msg: IncomingMessage, speechLevel: SpeechLevel): Promise<{ ex: Extraction; source: 'llm' | 'heuristic' } | null> {
   if (llm.enabled) {
     const ex = await chatJson(
       llm,
@@ -101,10 +106,11 @@ async function extract(llm: LLMProvider, msg: IncomingMessage): Promise<{ ex: Ex
         authorName: msg.author.displayName,
         mentionNames: msg.mentions.map((m) => m.displayName),
         nowWIB: formatWIB(now()),
+        speechLevel,
       }),
       { maxTokens: 300 },
     );
-    if (ex) return { ex: { ...ex, task: sanitize(ex.task), ownerName: ex.ownerName ?? undefined, deadlineText: ex.deadlineText ?? undefined }, source: 'llm' };
+    if (ex) return { ex: { ...ex, task: sanitize(ex.task), ownerName: ex.ownerName ?? undefined, deadlineText: ex.deadlineText ?? undefined, reply: ex.reply ? sanitize(ex.reply) : undefined }, source: 'llm' };
   }
   const ex = heuristicExtract(msg.text);
   return ex ? { ex, source: 'heuristic' } : null;
@@ -122,7 +128,8 @@ async function resolveOwner(msg: IncomingMessage, ownerName?: string): Promise<M
 /** Deteksi janji dari obrolan biasa → pesan konfirmasi dengan tombol. */
 export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
   if (!looksLikePromise(msg.text)) return [];
-  const result = await extract(llm, msg);
+  const level = group.speechLevel as SpeechLevel;
+  const result = await extract(llm, msg, level);
   if (!result || !result.ex.isPromise || result.ex.confidence < MIN_CONFIDENCE || !result.ex.task.trim()) return [];
 
   const owner = await resolveOwner(msg, result.ex.ownerName);
@@ -154,9 +161,9 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
   return [
     {
       to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
-      text: ASK[group.speechLevel as SpeechLevel](mention(owner)),
-      card: promiseCard(doc, '📝 Janji terdeteksi'),
-      actions: confirmActions(id),
+      // Nimbrung seperti teman sekelas: kalimat obrolan + detail kecil, tanpa kartu formal.
+      text: `${acceptLlmLine(result.ex.reply, mention(owner)) ?? askLine(level, mention(owner), doc.task)}\n${detailLine(doc)}`,
+      actions: confirmActions(id, level),
     },
   ];
 }
@@ -203,9 +210,10 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
     if (p.status === 'cancelled' || p.status === 'pending_confirm') return deny('Janji ini tidak aktif.');
     const doneAt = now();
     const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'done', doneAt } }, { returnDocument: 'after' }).lean<PromiseDoc>();
-    const late = p.deadline && doneAt > p.deadline;
+    const late = !!p.deadline && doneAt > p.deadline;
+    const level = await getSpeechLevel(p.platform, p.groupId);
     return {
-      update: { card: promiseCard(updated!, late ? '✅ Selesai (terlambat) — tetap terima kasih!' : '🎉 Selesai tepat waktu — terima kasih!', 'success'), actions: [] },
+      update: { text: `${doneLine(level, late)}\n${detailLine(updated!)}`, card: undefined, actions: [] },
       messages:
         p.status === 'overdue'
           ? [{ to: { kind: 'channel', channelId: p.channelId }, text: `Kabar baik: **${p.task}** dari ${mention(p.owner)} sudah selesai. Terima kasih 🙏` }]
@@ -219,9 +227,10 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
 
   if (p.status !== 'pending_confirm') return deny('Janji ini sudah diproses sebelumnya.');
 
+  const level = await getSpeechLevel(p.platform, p.groupId);
   if (verb === 'cancel' || verb === 'no') {
-    const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'cancelled' } }, { returnDocument: 'after' }).lean<PromiseDoc>();
-    return { update: { text: '', card: { ...promiseCard(updated!, '❌ Bukan janji — tidak dicatat'), tone: 'warn' }, actions: [] } };
+    await PromiseModel.updateOne({ _id: id }, { $set: { status: 'cancelled' } });
+    return { update: { text: `${cancelledLine(level)}\n~~${p.task}~~`, card: undefined, actions: [] } };
   }
 
   if (verb === 'ok') {
@@ -234,12 +243,11 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
       { $set: { status: 'active', confirmedAt, stage } },
       { returnDocument: 'after' },
     ).lean<PromiseDoc>();
-    const note = p.deadline ? 'Aku akan mengingatkan menjelang deadline.' : 'Belum ada deadline, jadi belum ada pengingat. Klik ✏️ untuk menambahkan.';
     return {
       update: {
-        text: '',
-        card: { ...promiseCard(updated!, '✅ Janji tercatat', 'success'), description: note },
-        actions: [{ id: ids.edit(id), label: '✏️ Ubah', kind: 'secondary' }, doneAction(id)],
+        text: `${confirmedLine(level, mention(p.owner), !!p.deadline)}\n${detailLine(updated!)}`,
+        card: undefined,
+        actions: activeActions(id, level),
       },
     };
   }
@@ -292,10 +300,13 @@ export async function handlePromiseForm(ev: FormSubmit): Promise<Reply> {
   }
   const updated = await PromiseModel.findByIdAndUpdate(id, { $set: set }, { returnDocument: 'after' }).lean<PromiseDoc>();
   const pending = updated!.status === 'pending_confirm';
+  const level = await getSpeechLevel(p.platform, p.groupId);
+  const who = mention(p.owner);
   return {
     update: {
-      card: promiseCard(updated!, pending ? '📝 Janji terdeteksi (diubah)' : '✅ Janji tercatat (diubah)', pending ? 'info' : 'success'),
-      actions: pending ? confirmActions(id) : [{ id: ids.edit(id), label: '✏️ Ubah', kind: 'secondary' }, doneAction(id)],
+      text: `${pending ? askLine(level, who, updated!.task) : confirmedLine(level, who, !!updated!.deadline)}\n${detailLine(updated!)}`,
+      card: undefined,
+      actions: pending ? confirmActions(id, level) : activeActions(id, level),
     },
   };
 }

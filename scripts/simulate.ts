@@ -89,7 +89,7 @@ function printReply(r: Reply) {
 const step = (t: string) => console.log(`\n━━ ${t}  [${formatWIB(clock.now())}]`);
 const actionOf = (out: OutgoingMessage[] | MessageBody | undefined, label: string) => {
   const list = Array.isArray(out) ? out : out ? [out] : [];
-  const a = list.flatMap((m) => m.actions ?? []).find((x) => x.label.includes(label));
+  const a = list.flatMap((m) => m.actions ?? []).find((x) => x.label.includes(label) || x.id.startsWith(label));
   if (!a) throw new Error(`Tombol "${label}" tidak ditemukan`);
   return a.id;
 };
@@ -131,9 +131,9 @@ step('Ani: "aku yang bikin PPT ya, Jumat jadi"');
 const det = await core.onMessage(say(ani, 'aku yang bikin PPT ya, Jumat jadi'));
 printOut(det);
 step('Budi coba konfirmasi janji Ani (harus ditolak)');
-printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'Konfirmasi'), messageId: 'bot1' }));
+printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
 step('Ani klik ✅ Konfirmasi');
-printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(det, 'Konfirmasi'), messageId: 'bot1' }));
+printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
 
 const tick = async (label: string, iso: string) => {
   clock.t = new Date(iso);
@@ -147,7 +147,7 @@ await tick('Tick (Kamis 11:00) — H-2 sudah lewat saat konfirmasi', '2026-10-22
 await tick('Tick Jumat 17:30 — H-0', '2026-10-23T10:30:00Z');
 const overdue = await tick('Tick Jumat 21:30 — lewat deadline → umumkan ke grup', '2026-10-23T14:30:00Z');
 step('Ani klik ✅ Sudah selesai (terlambat)');
-printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(overdue, 'Sudah selesai'), messageId: 'bot2' }));
+printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(overdue, 'p:done:'), messageId: 'bot2' }));
 
 clock.t = new Date('2026-10-24T02:00:00Z');
 step('Budi: "biar aku aja yang print laporan, besok sore" → ✏️ ubah');
@@ -156,7 +156,7 @@ printOut(det2);
 const edit = await core.onAction({ ...ctx(budi), actionId: actionOf(det2, 'Ubah'), messageId: 'bot3' });
 printReply(edit);
 printReply(await core.onForm({ ...ctx(budi), formId: edit.form!.id, values: { task: 'print & jilid laporan', deadline: 'senin jam 7 pagi' } }));
-printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det2, 'Konfirmasi'), messageId: 'bot3' }));
+printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det2, 'p:ok:'), messageId: 'bot3' }));
 step('/janji list');
 printReply(await core.onCommand({ ...ctx(ani), name: 'janji.list', options: {} }));
 step('/rapor-kelas');

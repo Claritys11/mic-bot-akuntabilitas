@@ -45,7 +45,7 @@ export async function collectPromiseReminders(at: Date): Promise<OutgoingMessage
     const level = levelOf.get(`${p.platform}:${p.groupId}`) ?? 'sopan';
     const text = billingText(level, stage, { nama: mention(p.owner), tugas: `**${p.task}**`, deadline: formatWIB(p.deadline!) }, `${p._id}:${stage}`);
     const card = { ...promiseCard(claimed, STAGE_TITLE[stage], stage === 'overdue' ? 'danger' : stage === 'h0' ? 'warn' : 'info') };
-    const actions = [doneAction(String(p._id))];
+    const actions = [doneAction(String(p._id), level)];
     const owner = { platform: p.platform as Platform, platformUserId: p.owner.platformUserId, groupId: p.groupId, displayName: p.owner.displayName };
 
     // H-2/H-1/H-0 secara pribadi (tidak mempermalukan); lewat deadline baru ke grup.
