@@ -28,7 +28,7 @@ Bot ini terpisah dari bot Hermes utamamu, jadi token dan memorinya juga terpisah
 2. Nyalakan **Message Content Intent** dan **Server Members Intent**.
 3. `DISCORD_CLIENT_ID` opsional — Application ID dibaca otomatis saat login.
 4. Undang ke server: jalankan bot, lalu buka link undangan yang dicetak di log (scope `bot` +
-   `applications.commands`, permission **Administrator** — dipakai untuk membuat channel saat setup).
+   `applications.commands`, permission minimal + **Manage Channels** untuk membuat channel saat setup; sengaja tidak memakai Administrator).
    Kalau halaman undangan macet di "Opening Discord App", tutup dulu klien desktop yang memakai arRPC
    (mis. Vesktop) lalu muat ulang.
 5. `DISCORD_GUILD_ID` opsional. Kosong = slash command didaftarkan per server tempat bot berada (langsung muncul). Kalau bot belum diundang ke server mana pun, log menampilkan link undangan.
