@@ -5,7 +5,7 @@ import { getGroup, setupGroup, upsertMember } from './groups.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
 import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps/service.ts';
-import { detectPromise, handlePromiseAction, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
+import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
 import { channelRef, sanitize, type ActionEvent, type Member, type OptionValue, type CommandInvocation, type FormSubmit, type IncomingMessage, type JoinEvent, type OutgoingMessage, type Platform, type PlatformOps, type Reply, type SpeechLevel } from './types.ts';
@@ -94,6 +94,9 @@ export function createCore(llm: LLMProvider): Core {
       if (msg.channelId === group.kasChannelId && msg.attachments.length) {
         return handleKasProof(llm, msg, group);
       }
+      // "jadi dong" untuk janji yang baru ditanya → konfirmasi tanpa klik.
+      const typed = await handleTypedConfirmation(msg, group);
+      if (typed) return typed;
       // Janji dulu (paling penting dicatat); kalau bukan janji, mungkin pertanyaan / sapaan ke bot.
       const promise = await detectPromise(llm, msg, group);
       if (promise.length) return promise;

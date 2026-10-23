@@ -198,6 +198,64 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
   ];
 }
 
+// Jawaban ketik untuk pertanyaan "jadi gak?" — orang sering membalas "jadi dong" alih-alih klik tombol.
+const YES = /^(?:jadi|iya+|iy|ya+|yoi|yup|yes|ok(?:e+|ay)?|siap|sip|gas(?:s|keun)?|bener|beneran|betul|aman|fix|pasti|inggih|nggih|leres)\b/i;
+const NO = /^(?:(?:ga|gak|nggak|ngga|enggak|engga|g|tidak|ora)\s*jadi|batal|ga|gak|nggak|ngga|enggak|engga|tidak|nope|bercanda|canda|skip|mboten|ora)\b/i;
+const TYPED_REPLY_WINDOW_MS = 15 * 60_000;
+/** Membalas (reply) pesan bot boleh lebih lama dari jendela biasa. */
+const TYPED_REPLY_WINDOW_TAGGED_MS = 60 * 60_000;
+
+/** "jadi dong" → yes, "ga jadi deh" → no, selain itu (atau kalimat panjang) → null. */
+export function typedAnswer(text: string): 'yes' | 'no' | null {
+  const t = text.trim();
+  if (!t || t.length > 60) return null;
+  if (NO.test(t)) return 'no';
+  return YES.test(t) ? 'yes' : null;
+}
+
+/**
+ * "jadi dong" / "ga jadi" dari pemilik janji yang baru ditanya → konfirmasi / batalkan tanpa klik.
+ * Kalau janji belum punya deadline dan jawabannya menyebut waktu ("jadi, jumat"), deadline ikut diisi.
+ * null kalau pesan ini bukan jawaban untuk janji yang menunggu.
+ */
+export async function handleTypedConfirmation(msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[] | null> {
+  const t = msg.text.trim();
+  const answer = typedAnswer(t);
+  if (!answer) return null;
+  const no = answer === 'no';
+  const window = msg.mentionsBot ? TYPED_REPLY_WINDOW_TAGGED_MS : TYPED_REPLY_WINDOW_MS;
+  const p = await PromiseModel.findOne({
+    groupId: msg.groupId,
+    channelId: msg.channelId,
+    'owner.platformUserId': msg.author.platformUserId,
+    status: 'pending_confirm',
+    createdAt: { $gte: new Date(Date.now() - window) },
+  })
+    .sort({ createdAt: -1 })
+    .lean<PromiseDoc>();
+  if (!p) return null;
+
+  const level = group.speechLevel as SpeechLevel;
+  const recent = await recentChat(msg.groupId, msg.channelId, msg.timestamp, 8);
+  const mood = detectMood([...recent.map((l) => l.text), t]);
+  const id = String(p._id);
+  const to = { kind: 'channel' as const, channelId: msg.channelId, replyTo: msg.id };
+
+  if (no) {
+    const done = await PromiseModel.findOneAndUpdate({ _id: p._id, status: 'pending_confirm' }, { $set: { status: 'cancelled' } });
+    return done ? [{ to, text: `${cancelledLine(level, mood)}\n~~${p.task}~~` }] : null;
+  }
+  const at = now();
+  const deadline = p.deadline ?? resolveDeadline(t, at);
+  const updated = await PromiseModel.findOneAndUpdate(
+    { _id: p._id, status: 'pending_confirm' },
+    { $set: { status: 'active', confirmedAt: at, deadline, stage: deadline ? initialStage(deadline, at) : 'none' } },
+    { returnDocument: 'after' },
+  ).lean<PromiseDoc>();
+  if (!updated) return null;
+  return [{ to, text: `${confirmedLine(level, mention(p.owner), !!deadline, mood)}\n${detailLine(updated)}`, actions: activeActions(id, level) }];
+}
+
 /** Buat janji langsung (dipakai fitur lain, mis. "Bentuk tim"). Tetap perlu dikonfirmasi. */
 export async function createPendingPromise(input: {
   ctx: Context;

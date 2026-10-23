@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { typedAnswer } from '../src/core/promises/service.ts';
 import { acceptLlmLine, askLine, cancelledLine, confirmedLine, LABELS } from '../src/core/promises/voice.ts';
 
 const WHO = '{{@u1}}';
@@ -60,5 +61,17 @@ describe('LLM menulis nama langsung', () => {
   });
   test('nama tak dikenal tetap ditolak', () => {
     expect(acceptLlmLine('oke @Budi, PPT-nya Jumat ya?', WHO, 'santai', ['Ani'])).toBeNull();
+  });
+});
+
+describe('jawaban ketik untuk "jadi gak?"', () => {
+  test('ya', () => {
+    for (const t of ['jadi dong haha', 'jadi', 'iyaa', 'oke siap', 'gas', 'jadi, jumat', 'inggih']) expect(typedAnswer(t)).toBe('yes');
+  });
+  test('tidak', () => {
+    for (const t of ['ga jadi', 'gak jadi deh', 'nggak', 'batal aja', 'bercanda wkwk', 'mboten']) expect(typedAnswer(t)).toBe('no');
+  });
+  test('bukan jawaban', () => {
+    for (const t of ['wkwk', 'besok ujian ya', 'jadinya gimana sih kalau kita ganti topik presentasinya aja biar lebih gampang']) expect(typedAnswer(t)).toBeNull();
   });
 });

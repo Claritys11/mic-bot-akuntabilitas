@@ -39,6 +39,7 @@ const member = (id: string, name: string): Member => ({ platform: 'discord', pla
 const ani = member('u-ani', 'Ani');
 const budi = member('u-budi', 'Budi');
 const ketua = member('u-ketua', 'Ketua');
+const sari = member('u-sari', 'Sari');
 const ctx = (actor: Member, channelId = CH, isAdmin = false): Context => ({ platform: 'discord', groupId: G, channelId, actor, isAdmin });
 
 let msgSeq = 0;
@@ -134,6 +135,10 @@ step('Budi coba konfirmasi janji Ani (harus ditolak)');
 printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
 step('Ani klik ✅ Konfirmasi');
 printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
+
+step('Sari: "aku yang beli kertas HVS" → bot tanya, Sari jawab ketik "jadi dong, besok"');
+printOut(await core.onMessage(say(sari, 'aku yang beli kertas HVS ya')));
+printOut(await core.onMessage(say(sari, 'jadi dong, besok')));
 
 step('Budi: "ada tugas gak nih?" → bot menjawab dari catatan');
 printOut(await core.onMessage(say(budi, 'ada tugas gak nih?')));
