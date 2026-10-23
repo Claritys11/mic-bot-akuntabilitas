@@ -27,6 +27,10 @@ export interface IncomingMessage {
   text: string;
   attachments: Attachment[];
   mentions: Member[];
+  /** Bot disebut/di-tag di pesan ini. */
+  mentionsBot?: boolean;
+  /** Pengirim admin grup (untuk wawancara setup). */
+  authorIsAdmin?: boolean;
   timestamp: Date;
 }
 
@@ -124,6 +128,23 @@ export interface Reply {
   update?: MessageBody;
   form?: Form;
   messages?: OutgoingMessage[];
+}
+
+/** Bot baru masuk grup / dinyalakan di grup yang belum diatur. */
+export interface JoinEvent {
+  platform: Platform;
+  groupId: string;
+  /** Channel untuk menyapa (system channel / channel pertama yang bisa ditulisi). */
+  channelId: string;
+}
+
+/**
+ * Kemampuan opsional platform. Discord bisa membuat channel; WhatsApp tidak —
+ * core menyesuaikan alurnya kalau fungsi tidak tersedia.
+ */
+export interface PlatformOps {
+  createChannel?(groupId: string, name: string, topic: string, nearChannelId: string): Promise<string | null>;
+  listMembers?(groupId: string): Promise<Member[]>;
 }
 
 /** Sisi pengirim yang diimplementasikan adapter; dipakai scheduler. */

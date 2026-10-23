@@ -29,12 +29,12 @@ export const COMMANDS: CommandSpec[] = [
   { name: 'ping', description: 'Cek bot hidup' },
   {
     name: 'setup',
-    description: 'Atur kelas ini (pengurus kelas)',
+    description: 'Atur kelas ini — kosongkan opsi untuk diwawancarai bot',
     adminOnly: true,
     options: [
-      { name: 'kelas', description: 'Nama kelas, mis. XI RPL 2', type: 'string', required: true },
-      { name: 'jurusan', description: 'Jurusan, mis. RPL / TKJ', type: 'string', required: true },
-      { name: 'tutur', description: 'Tingkat tutur bot', type: 'string', required: true, choices: TUTUR },
+      { name: 'kelas', description: 'Nama kelas, mis. XI RPL 2 (kosong = wawancara)', type: 'string' },
+      { name: 'jurusan', description: 'Jurusan, mis. RPL, TKJ, PG', type: 'string' },
+      { name: 'tutur', description: 'Tingkat tutur bot', type: 'string', choices: TUTUR },
       { name: 'channel_kas', description: 'Channel untuk bukti transfer kas', type: 'channel' },
       { name: 'channel_lomba', description: 'Channel untuk info lomba', type: 'channel' },
     ],

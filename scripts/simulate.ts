@@ -94,10 +94,35 @@ const actionOf = (out: OutgoingMessage[] | MessageBody | undefined, label: strin
   return a.id;
 };
 
-// ---- M0: setup ----
-step('/setup');
-printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'setup', options: { kelas: 'XI RPL 2', jurusan: 'rpl', tutur: 'sopan', channel_kas: KAS, channel_lomba: LOMBA } }));
-for (const m of [ani, budi, ketua]) await core.onMessage(say(m, 'halo semua'));
+// ---- M0: setup lewat wawancara ----
+core.registerPlatform('discord', {
+  createChannel: async (_g, name) => (name === 'kas-kelas' ? KAS : LOMBA),
+  listMembers: async () => [ani, budi, ketua],
+});
+const click = async (actor: Member, actionId: string, isAdmin = false) =>
+  printReply(await core.onAction({ ...ctx(actor, CH, isAdmin), actionId, messageId: 'm-ob' }));
+const answer = async (author: Member, text: string, extra: Partial<IncomingMessage> = {}) => printOut(await core.onMessage({ ...say(author, text), ...extra }));
+
+step('Bot masuk server → menyapa');
+printOut(await core.onJoin({ platform: 'discord', groupId: G, channelId: CH }));
+step('Budi (bukan admin) klik mulai → ditolak');
+await click(budi, 'ob:start');
+step('Ketua (admin) klik 🚀 Ayo mulai');
+await click(ketua, 'ob:start', true);
+step('Budi ikut jawab → diabaikan');
+await answer(budi, 'XI ngawur');
+step('Ketua: nama kelas');
+await answer(ketua, 'kelas XI International');
+step('Ketua: jurusan');
+await answer(ketua, 'RPL, TKJ, dan PG');
+step('Ketua pilih gaya bahasa: sopan');
+await click(ketua, 'ob:tutur:sopan', true);
+step('Ketua: ✨ Bikinin channel');
+await click(ketua, 'ob:ch:new', true);
+step('Ketua: kas');
+await answer(ketua, '10rb per bulan');
+step('Ketua tag bendahara');
+await answer(ketua, '@Ketua aja', { mentions: [ketua] });
 
 // ---- M1: janji ----
 step('Obrolan biasa (tidak lolos prefilter)');

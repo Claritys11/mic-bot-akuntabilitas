@@ -9,7 +9,7 @@ Bot yang tinggal di grup kelas dan mengambil peran yang dihindari semua orang: *
 |---|---|
 | Deteksi janji dari obrolan | ketik biasa: *"aku yang bikin PPT ya, Jumat jadi"* → tombol ✅ / ✏️ / ❌ |
 | Tagihan bertahap | H-2 / H-1 / H-0 lewat DM (cadangan: channel), lewat deadline → diumumkan ke grup |
-| Tingkat tutur | `santai`, `sopan`, `krama` (Jawa), dipilih di `/setup` |
+| Tingkat tutur | `santai`, `sopan`, `krama` (Jawa), dipilih saat wawancara setup |
 | Janji & rapor | `/janji list`, `/janji selesai`, `/rapor-kelas` (skor di level kelas saja) |
 | Kas kelas | `/kas atur`, kirim foto bukti di channel kas → cek duplikat/nominal/tanggal → bendahara ✅/❌, `/kas rekap`, `/kas ekspor` (CSV) |
 | Rangkuman | `/rangkum jam:3` (pesan mentah disimpan maks. 48 jam, TTL index) |
@@ -27,9 +27,10 @@ Bot ini terpisah dari bot Hermes utamamu, jadi token dan memorinya juga terpisah
 1. https://discord.com/developers/applications → **New Application** → tab **Bot** → *Reset Token* → salin ke `DISCORD_TOKEN`.
 2. Nyalakan **Message Content Intent** dan **Server Members Intent**.
 3. `DISCORD_CLIENT_ID` opsional — Application ID dibaca otomatis saat login.
-4. Undang ke server dev: *OAuth2 → URL Generator* → scope `bot` + `applications.commands`; permission:
-   View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Embed Links,
-   Attach Files, Read Message History.
+4. Undang ke server: jalankan bot, lalu buka link undangan yang dicetak di log (scope `bot` +
+   `applications.commands`, permission **Administrator** — dipakai untuk membuat channel saat setup).
+   Kalau halaman undangan macet di "Opening Discord App", tutup dulu klien desktop yang memakai arRPC
+   (mis. Vesktop) lalu muat ulang.
 5. `DISCORD_GUILD_ID` opsional. Kosong = slash command didaftarkan per server tempat bot berada (langsung muncul). Kalau bot belum diundang ke server mana pun, log menampilkan link undangan.
 
 ### 2. Isi `.env`
@@ -46,7 +47,10 @@ docker compose up -d          # bot + mongo
 docker compose up -d mongo && bun install && bun dev
 ```
 
-Di Discord: `/setup kelas:"XI RPL 2" jurusan:RPL tutur:sopan channel_kas:#kas channel_lomba:#info-lomba`.
+Begitu masuk server, bot menyapa dan **mewawancarai admin** dengan bahasa santai: nama kelas, jurusan
+(boleh campur, mis. `RPL, TKJ, PG`), gaya bahasa, mau dibuatkan channel `#kas-kelas` & `#info-lomba`
+atau tidak, iuran kas, dan bendahara. Ulang kapan saja dengan tag bot + "setup ulang" atau `/setup`
+tanpa opsi. Cara cepat tetap ada: `/setup kelas:"XI RPL 2" jurusan:RPL tutur:sopan`.
 
 ### Demo dipercepat
 

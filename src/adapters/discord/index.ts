@@ -13,6 +13,7 @@ import {
   SlashCommandSubcommandBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type Guild,
   type GuildMember,
   type Interaction,
   type Message,
@@ -56,6 +57,8 @@ function toIncoming(msg: Message<true>): IncomingMessage {
     author: toMember(guildId, msg.author.id, displayName(msg.member, msg.author.username)),
     text,
     mentions,
+    mentionsBot: msg.client.user ? msg.mentions.users.has(msg.client.user.id) : false,
+    authorIsAdmin: Boolean(msg.member?.permissions.has(ADMIN)),
     timestamp: msg.createdAt,
     attachments: [...msg.attachments.values()].map((a) => ({
       name: a.name,
@@ -276,6 +279,44 @@ async function onInteraction(core: Core, sender: Sender, i: Interaction) {
   }
 }
 
+// ---------- Kemampuan platform untuk core (wawancara setup) ----------
+
+/** Channel untuk menyapa: system channel kalau bisa ditulisi, kalau tidak channel teks teratas. */
+function greetChannel(guild: Guild): string | null {
+  const me = guild.members.me;
+  const canSend = (ch: { permissionsFor(m: GuildMember): { has(p: bigint[]): boolean } | null }) =>
+    Boolean(me && ch.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]));
+  if (guild.systemChannel && canSend(guild.systemChannel)) return guild.systemChannel.id;
+  const text = guild.channels.cache
+    .filter((c) => c.type === ChannelType.GuildText && canSend(c))
+    .sort((a, b) => ('position' in a && 'position' in b ? a.position - b.position : 0));
+  return text.first()?.id ?? null;
+}
+
+function platformOps(client: Client) {
+  return {
+    async createChannel(groupId: string, name: string, topic: string, nearChannelId: string) {
+      try {
+        const guild = await client.guilds.fetch(groupId);
+        const near = await client.channels.fetch(nearChannelId).catch(() => null);
+        const parent = near && 'parentId' in near ? near.parentId : null;
+        const existing = guild.channels.cache.find((c) => c.type === ChannelType.GuildText && c.name === name);
+        if (existing) return existing.id;
+        const ch = await guild.channels.create({ name, type: ChannelType.GuildText, topic, parent: parent ?? undefined });
+        return ch.id;
+      } catch (err) {
+        console.error(`[discord] gagal bikin channel #${name}:`, (err as Error).message);
+        return null;
+      }
+    },
+    async listMembers(groupId: string) {
+      const guild = await client.guilds.fetch(groupId);
+      const members = await guild.members.fetch();
+      return [...members.filter((m) => !m.user.bot).values()].map((m) => toMember(groupId, m.id, m.displayName));
+    },
+  };
+}
+
 export interface DiscordAdapter {
   client: Client;
   sender: Sender;
@@ -295,6 +336,17 @@ export function createDiscordAdapter(core: Core, opts: { token: string; guildId?
     partials: [Partials.Channel],
   });
   const sender = new DiscordSender(client);
+  core.registerPlatform('discord', platformOps(client));
+
+  const greet = async (guild: Guild) => {
+    const channelId = greetChannel(guild);
+    if (!channelId) return console.warn(`[discord] tidak ada channel yang bisa ditulisi di ${guild.name}`);
+    try {
+      for (const m of await core.onJoin({ platform: 'discord', groupId: guild.id, channelId })) await sender.send(m);
+    } catch (err) {
+      console.error('[discord] gagal menyapa server baru:', err);
+    }
+  };
 
   const register = (clientId: string, guildId: string) =>
     registerCommands(opts.token, clientId, guildId).catch((err) => console.error(`[discord] gagal daftar command di ${guildId}:`, err));
@@ -303,19 +355,23 @@ export function createDiscordAdapter(core: Core, opts: { token: string; guildId?
     console.log(`[discord] online sebagai ${c.user.tag}`);
     const guildIds = opts.guildId ? [opts.guildId] : [...c.guilds.cache.keys()];
     const invite = (guildId?: string) =>
-      `https://discord.com/oauth2/authorize?client_id=${c.application.id}&scope=bot+applications.commands&permissions=309237763136` +
+      `https://discord.com/oauth2/authorize?client_id=${c.application.id}&scope=bot+applications.commands&permissions=8` +
       (guildId ? `&guild_id=${guildId}&disable_guild_select=true` : '');
     if (opts.guildId && !c.guilds.cache.has(opts.guildId)) {
       console.log(`[discord] bot belum ada di server ${opts.guildId}. Undang lewat:\n  ${invite(opts.guildId)}`);
     } else if (!guildIds.length) {
       console.log(`[discord] bot belum ada di server mana pun. Undang lewat:\n  ${invite()}`);
     }
-    for (const id of guildIds.filter((g) => c.guilds.cache.has(g))) await register(c.application.id, id);
+    for (const id of guildIds.filter((g) => c.guilds.cache.has(g))) {
+      await register(c.application.id, id);
+      await greet(c.guilds.cache.get(id)!); // belum diatur → mulai wawancara (sekali saja)
+    }
   });
 
   // Diundang ke server baru saat bot berjalan → langsung daftarkan command di sana.
   client.on(Events.GuildCreate, (g) => {
-    if (!opts.guildId || opts.guildId === g.id) void register(g.client.application.id, g.id);
+    if (opts.guildId && opts.guildId !== g.id) return;
+    void register(g.client.application.id, g.id).then(() => greet(g));
   });
 
   client.on(Events.MessageCreate, async (msg) => {

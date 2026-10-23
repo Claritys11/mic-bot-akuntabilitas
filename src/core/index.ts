@@ -2,17 +2,22 @@ import type { LLMProvider } from '../llm/provider.ts';
 import { collectPromiseReminders } from './billing/service.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
+import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
 import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps/service.ts';
 import { detectPromise, handlePromiseAction, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
-import { channelRef, sanitize, type ActionEvent, type Member, type OptionValue, type CommandInvocation, type FormSubmit, type IncomingMessage, type OutgoingMessage, type Reply, type SpeechLevel } from './types.ts';
+import { channelRef, sanitize, type ActionEvent, type Member, type OptionValue, type CommandInvocation, type FormSubmit, type IncomingMessage, type JoinEvent, type OutgoingMessage, type Platform, type PlatformOps, type Reply, type SpeechLevel } from './types.ts';
 
 export interface Core {
   onMessage(msg: IncomingMessage): Promise<OutgoingMessage[]>;
   onAction(ev: ActionEvent): Promise<Reply>;
   onForm(ev: FormSubmit): Promise<Reply>;
   onCommand(cmd: CommandInvocation): Promise<Reply>;
+  /** Bot masuk grup baru / menyala di grup yang belum diatur → mulai wawancara setup. */
+  onJoin(ev: JoinEvent): Promise<OutgoingMessage[]>;
+  /** Adapter mendaftarkan kemampuan platform (buat channel, daftar anggota). */
+  registerPlatform(platform: Platform, ops: PlatformOps): void;
   /** Dipanggil scheduler: kumpulkan semua pesan terjadwal yang jatuh tempo. */
   tick(at?: Date): Promise<OutgoingMessage[]>;
 }
@@ -24,12 +29,20 @@ const cleanOptions = (o: Record<string, OptionValue | undefined>) =>
 const fail = (text: string): Reply => ({ reply: { text, private: true } });
 
 export function createCore(llm: LLMProvider): Core {
+  const platformOps = new Map<Platform, PlatformOps>();
+  const opsFor = (p: Platform) => platformOps.get(p) ?? {};
+
   async function setup(cmd: CommandInvocation): Promise<Reply> {
     if (!cmd.isAdmin) return fail('Hanya pengurus kelas (admin server) yang bisa menjalankan /setup.');
+    // Tanpa opsi → wawancara santai di channel ini (cara utama); dengan opsi → cara cepat.
+    if (!cmd.options.kelas) {
+      const configured = Boolean(await getGroup(cmd.platform, cmd.groupId));
+      return { reply: { text: 'Oke, aku mulai wawancaranya di channel ini ya 👇', private: true }, messages: await startOnboarding(cmd.platform, cmd.groupId, cmd.channelId, configured) };
+    }
     const tutur = String(cmd.options.tutur ?? 'sopan') as SpeechLevel;
     const g = await setupGroup(cmd, {
       className: String(cmd.options.kelas),
-      major: String(cmd.options.jurusan),
+      major: String(cmd.options.jurusan ?? 'UMUM'),
       speechLevel: ['santai', 'sopan', 'krama'].includes(tutur) ? tutur : 'sopan',
       mainChannelId: cmd.channelId,
       kasChannelId: (cmd.options.channel_kas as string | undefined) ?? null,
@@ -73,6 +86,8 @@ export function createCore(llm: LLMProvider): Core {
     async onMessage(raw) {
       const msg = { ...raw, text: sanitize(raw.text), author: cleanMember(raw.author), mentions: raw.mentions.map(cleanMember) };
       const group = await getGroup(msg.platform, msg.groupId);
+      const onboarding = await handleOnboardingMessage(msg, opsFor(msg.platform), Boolean(group));
+      if (onboarding) return onboarding;
       if (!group) return [];
       await Promise.all([upsertMember(msg.author), bufferMessage(msg)]);
       if (msg.channelId === group.kasChannelId && msg.attachments.length) {
@@ -87,6 +102,7 @@ export function createCore(llm: LLMProvider): Core {
       if (prefix === 'p') return handlePromiseAction(ev);
       if (prefix === 'k') return handleKasAction(ev);
       if (prefix === 'o') return handleOppAction(ev);
+      if (prefix === 'ob') return handleOnboardingAction(ev, opsFor(ev.platform));
       return fail('Tombol ini sudah tidak berlaku.');
     },
 
@@ -102,6 +118,12 @@ export function createCore(llm: LLMProvider): Core {
       const cmd = { ...raw, actor: cleanMember(raw.actor), options: cleanOptions(raw.options) };
       const handler = commands[cmd.name];
       return handler ? handler(cmd) : fail(`Perintah ${cmd.name} belum tersedia.`);
+    },
+
+    onJoin,
+
+    registerPlatform(platform, ops) {
+      platformOps.set(platform, ops);
     },
 
     async tick(at = now()) {

@@ -5,12 +5,20 @@ const RELATED: Record<string, string[]> = {
   PPLG: ['programming', 'software', 'web', 'mobile', 'ai', 'hackathon', 'uiux', 'game', 'data', 'it'],
   TKJ: ['jaringan', 'network', 'cyber', 'ctf', 'iot', 'hardware', 'cloud', 'it'],
   TJKT: ['jaringan', 'network', 'cyber', 'ctf', 'iot', 'hardware', 'cloud', 'it'],
+  // PG = Pengembangan Gim
+  PG: ['game', 'programming', 'animasi', 'desain', 'uiux', 'it'],
   DKV: ['desain', 'uiux', 'poster', 'video', 'animasi'],
   ANIMASI: ['desain', 'animasi', 'video', 'game'],
 };
 const GENERAL = ['umum', 'inovasi', 'bisnis', 'karya-tulis', 'sains'];
 
+/** Kelas bisa multi-jurusan ("RPL, TKJ, PG") → pakai jurusan yang paling cocok. */
 export function relevance(tags: string[], major: string): number {
+  const majors = major.split(/[,/&\s]+/).filter(Boolean);
+  return Math.max(0, ...majors.map((m) => relevanceOne(tags, m)));
+}
+
+function relevanceOne(tags: string[], major: string): number {
   const t = new Set(tags.map((x) => x.toLowerCase()));
   const m = major.toUpperCase();
   let score = 0;

@@ -14,7 +14,7 @@ export interface SetupInput {
   oppsChannelId?: string | null;
 }
 
-export async function setupGroup(ctx: Context, input: SetupInput): Promise<GroupDoc> {
+export async function setupGroup(ctx: Pick<Context, 'platform' | 'groupId'>, input: SetupInput): Promise<GroupDoc> {
   const doc = await GroupModel.findOneAndUpdate(
     { platform: ctx.platform, groupId: ctx.groupId },
     {

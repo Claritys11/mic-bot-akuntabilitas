@@ -176,3 +176,30 @@ const OppPostSchema = new Schema(
 );
 OppPostSchema.index({ groupId: 1, opportunityId: 1 }, { unique: true });
 export const OppPostModel = mongoose.model('OppPost', OppPostSchema);
+
+// ---------- Wawancara setup (sementara; hilang sendiri setelah 3 hari) ----------
+const OnboardingSchema = new Schema(
+  {
+    platform: { type: String, required: true },
+    groupId: { type: String, required: true },
+    channelId: { type: String, required: true },
+    step: { type: String, required: true },
+    interviewerId: { type: String, default: null },
+    data: {
+      className: { type: String, default: null },
+      majors: { type: [String], default: [] },
+      speechLevel: { type: String, default: 'santai' },
+      kasChannelId: { type: String, default: null },
+      oppsChannelId: { type: String, default: null },
+      kasAmount: { type: Number, default: 0 },
+      kasPeriod: { type: String, default: 'bulanan' },
+      treasurerId: { type: String, default: null },
+    },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: false },
+);
+OnboardingSchema.index({ platform: 1, groupId: 1 }, { unique: true });
+OnboardingSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 3 * 24 * 3600 });
+export const OnboardingModel = mongoose.model('Onboarding', OnboardingSchema);
+export type OnboardingDoc = InferSchemaType<typeof OnboardingSchema> & { _id: mongoose.Types.ObjectId };
