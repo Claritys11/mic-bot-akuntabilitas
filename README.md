@@ -62,17 +62,17 @@ tanpa opsi. Cara cepat tetap ada: `/setup kelas:"XI RPL 2" jurusan:RPL tutur:sop
 Bot memakai klien **OpenAI-compatible** (`src/llm/openrouter.ts`), jadi backend-nya cukup diganti
 lewat `LLM_BASE_URL`.
 
-**Mode A — OpenRouter (default, disarankan untuk privasi).** Dev memakai model `:free`; untuk prod
-ganti ke model berbayar, mis. `LLM_TEXT_MODEL=nousresearch/hermes-4-405b`. Setiap panggilan stateless, jadi tidak ada memori sama
+**Mode A — OpenRouter (default, disarankan untuk privasi).** Default `z-ai/glm-5.3-flash` untuk teks
+dan gambar (murah, ~2 detik per balasan). Tanpa kredit bisa pakai model `:free`. Setiap panggilan stateless, jadi tidak ada memori sama
 sekali dan tidak bercampur dengan Hermes Agent milikmu.
 
 **Cadangan otomatis.** `LLM_TEXT_MODEL` / `LLM_VISION_MODEL` boleh berisi beberapa model dipisah koma,
 dan `BACKUP_OPENROUTER_API_KEY` dipakai kalau key utama ditolak. Bot mencoba tiap model × key
-berurutan; kombinasi yang kena limit diistirahatkan 10 menit (rate limit: 1 menit). Contoh prod:
+berurutan; kombinasi yang kena limit diistirahatkan 10 menit (rate limit: 1 menit). Contoh:
 
 ```
-LLM_TEXT_MODEL=nousresearch/hermes-4-405b,dots-studio/dots-3-note-preview:free
-LLM_VISION_MODEL=google/gemini-2.5-flash,dots-studio/dots-3-note-preview:free
+LLM_TEXT_MODEL=z-ai/glm-5.3-flash,dots-studio/dots-3-note-preview:free
+LLM_VISION_MODEL=z-ai/glm-5.3-flash
 ```
 
 Model berbayar butuh kredit OpenRouter **dan** batas belanja key > $0 (Settings → Keys). Model `:free`

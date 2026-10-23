@@ -15,12 +15,15 @@ const EnvSchema = z.object({
   OPENROUTER_API_KEY: optionalString,
   // Dipakai otomatis kalau key utama ditolak / habis kuota / rate limit.
   BACKUP_OPENROUTER_API_KEY: optionalString,
-  LLM_TEXT_MODEL: z.preprocess(emptyToUndefined, z.string().default('dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free')),
-  LLM_VISION_MODEL: z.preprocess(emptyToUndefined, z.string().default('dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free')),
+  LLM_TEXT_MODEL: z.preprocess(emptyToUndefined, z.string().default('z-ai/glm-5.3-flash')),
+  LLM_VISION_MODEL: z.preprocess(emptyToUndefined, z.string().default('z-ai/glm-5.3-flash')),
   LLM_VISION_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
   LLM_VISION_API_KEY: optionalString,
   // Hermes Agent API server tidak selalu mendukung response_format; matikan kalau perlu.
   LLM_JSON_MODE: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).default('true')),
+  // OpenRouter: pilih penyedia model tercepat. Untuk GLM, penyedia default bisa "berpikir"
+  // ratusan token dulu (3–9 dtk); urut latency ~1–2 dtk. "default" = biarkan OpenRouter memilih.
+  LLM_PROVIDER_SORT: z.preprocess(emptyToUndefined, z.enum(['latency', 'throughput', 'price', 'default']).default('latency')),
   LLM_TIMEOUT_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(60_000)),
 
   TZ: z.preprocess(emptyToUndefined, z.string().default('Asia/Jakarta')),
@@ -42,6 +45,7 @@ export interface Config {
     vision: LLMEndpoint;
     jsonMode: boolean;
     timeoutMs: number;
+    providerSort?: 'latency' | 'throughput' | 'price';
   };
   demoTimeScale: number;
 }
@@ -70,6 +74,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       },
       jsonMode: e.LLM_JSON_MODE === 'true',
       timeoutMs: e.LLM_TIMEOUT_MS,
+      providerSort: e.LLM_PROVIDER_SORT === 'default' ? undefined : e.LLM_PROVIDER_SORT,
     },
     demoTimeScale: e.DEMO_TIME_SCALE,
   };

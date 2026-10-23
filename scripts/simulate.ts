@@ -135,6 +135,9 @@ printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'p:ok:'),
 step('Ani klik ✅ Konfirmasi');
 printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
 
+step('Budi: "ada tugas gak nih?" → bot menjawab dari catatan');
+printOut(await core.onMessage(say(budi, 'ada tugas gak nih?')));
+
 const tick = async (label: string, iso: string) => {
   clock.t = new Date(iso);
   step(label);

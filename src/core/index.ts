@@ -1,5 +1,6 @@
 import type { LLMProvider } from '../llm/provider.ts';
 import { collectPromiseReminders } from './billing/service.ts';
+import { answerQuestion } from './chat/ask.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
@@ -93,7 +94,10 @@ export function createCore(llm: LLMProvider): Core {
       if (msg.channelId === group.kasChannelId && msg.attachments.length) {
         return handleKasProof(llm, msg, group);
       }
-      return detectPromise(llm, msg, group);
+      // Janji dulu (paling penting dicatat); kalau bukan janji, mungkin pertanyaan / sapaan ke bot.
+      const promise = await detectPromise(llm, msg, group);
+      if (promise.length) return promise;
+      return answerQuestion(llm, msg, group);
     },
 
     async onAction(raw) {

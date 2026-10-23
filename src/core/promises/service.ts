@@ -22,6 +22,8 @@ import {
   type Reply,
   type SpeechLevel,
 } from '../types.ts';
+import { asTranscript, recentChat } from '../chat/context.ts';
+import { detectMood, graverMood, type Mood } from '../chat/mood.ts';
 import { parseRelativeDate } from './dateParser.ts';
 import { heuristicExtract, looksLikePromise, type Extraction } from './prefilter.ts';
 import { acceptLlmLine, askLine, cancelledLine, confirmedLine, doneLine, LABELS } from './voice.ts';
@@ -32,6 +34,7 @@ const ExtractionSchema = z.object({
   ownerName: z.string().nullish(),
   deadlineText: z.string().nullish(),
   confidence: z.number().min(0).max(1).default(0.5),
+  mood: z.enum(['santai', 'serius', 'tegang', 'sedih']).nullish().catch(null),
   reply: z.string().nullish(),
 });
 
@@ -96,7 +99,23 @@ export function resolveDeadline(text: string | null | undefined, at: Date): Date
   return d > at ? d : null;
 }
 
-async function extract(llm: LLMProvider, msg: IncomingMessage, speechLevel: SpeechLevel): Promise<{ ex: Extraction; source: 'llm' | 'heuristic' } | null> {
+interface ChatScene {
+  level: SpeechLevel;
+  mood: Mood;
+  recent: string[];
+}
+
+/** Suasana channel saat ini dari buffer obrolan (dipakai saat tombol diklik, tanpa LLM). */
+async function moodNow(groupId: string, channelId: string): Promise<Mood> {
+  const lines = await recentChat(groupId, channelId, new Date(), 8);
+  return detectMood(lines.map((l) => l.text));
+}
+
+async function extract(
+  llm: LLMProvider,
+  msg: IncomingMessage,
+  scene: ChatScene,
+): Promise<{ ex: Extraction; mood: Mood; source: 'llm' | 'heuristic' } | null> {
   if (llm.enabled) {
     const ex = await chatJson(
       llm,
@@ -106,14 +125,23 @@ async function extract(llm: LLMProvider, msg: IncomingMessage, speechLevel: Spee
         authorName: msg.author.displayName,
         mentionNames: msg.mentions.map((m) => m.displayName),
         nowWIB: formatWIB(now()),
-        speechLevel,
+        speechLevel: scene.level,
+        moodHint: scene.mood,
+        recent: scene.recent,
       }),
       { maxTokens: 300 },
     );
-    if (ex) return { ex: { ...ex, task: sanitize(ex.task), ownerName: ex.ownerName ?? undefined, deadlineText: ex.deadlineText ?? undefined, reply: ex.reply ? sanitize(ex.reply) : undefined }, source: 'llm' };
+    if (ex) {
+      const { mood, ...rest } = ex;
+      return {
+        ex: { ...rest, task: sanitize(ex.task), ownerName: ex.ownerName ?? undefined, deadlineText: ex.deadlineText ?? undefined, reply: ex.reply ? sanitize(ex.reply) : undefined },
+        mood: graverMood(scene.mood, mood),
+        source: 'llm',
+      };
+    }
   }
   const ex = heuristicExtract(msg.text);
-  return ex ? { ex, source: 'heuristic' } : null;
+  return ex ? { ex, mood: scene.mood, source: 'heuristic' } : null;
 }
 
 async function resolveOwner(msg: IncomingMessage, ownerName?: string): Promise<Member> {
@@ -129,7 +157,9 @@ async function resolveOwner(msg: IncomingMessage, ownerName?: string): Promise<M
 export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
   if (!looksLikePromise(msg.text)) return [];
   const level = group.speechLevel as SpeechLevel;
-  const result = await extract(llm, msg, level);
+  const recent = await recentChat(msg.groupId, msg.channelId, msg.timestamp);
+  const mood = detectMood([...recent.map((l) => l.text), msg.text]);
+  const result = await extract(llm, msg, { level, mood, recent: asTranscript(recent) });
   if (!result || !result.ex.isPromise || result.ex.confidence < MIN_CONFIDENCE || !result.ex.task.trim()) return [];
 
   const owner = await resolveOwner(msg, result.ex.ownerName);
@@ -162,7 +192,7 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
     {
       to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
       // Nimbrung seperti teman sekelas: kalimat obrolan + detail kecil, tanpa kartu formal.
-      text: `${acceptLlmLine(result.ex.reply, mention(owner)) ?? askLine(level, mention(owner), doc.task)}\n${detailLine(doc)}`,
+      text: `${acceptLlmLine(result.ex.reply, mention(owner), result.mood, [owner.displayName, result.ex.ownerName ?? '']) ?? askLine(level, mention(owner), doc.task, result.mood)}\n${detailLine(doc)}`,
       actions: confirmActions(id, level),
     },
   ];
@@ -211,9 +241,9 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
     const doneAt = now();
     const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'done', doneAt } }, { returnDocument: 'after' }).lean<PromiseDoc>();
     const late = !!p.deadline && doneAt > p.deadline;
-    const level = await getSpeechLevel(p.platform, p.groupId);
+    const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
     return {
-      update: { text: `${doneLine(level, late)}\n${detailLine(updated!)}`, card: undefined, actions: [] },
+      update: { text: `${doneLine(level, late, mood)}\n${detailLine(updated!)}`, card: undefined, actions: [] },
       messages:
         p.status === 'overdue'
           ? [{ to: { kind: 'channel', channelId: p.channelId }, text: `Kabar baik: **${p.task}** dari ${mention(p.owner)} sudah selesai. Terima kasih 🙏` }]
@@ -227,10 +257,10 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
 
   if (p.status !== 'pending_confirm') return deny('Janji ini sudah diproses sebelumnya.');
 
-  const level = await getSpeechLevel(p.platform, p.groupId);
+  const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
   if (verb === 'cancel' || verb === 'no') {
     await PromiseModel.updateOne({ _id: id }, { $set: { status: 'cancelled' } });
-    return { update: { text: `${cancelledLine(level)}\n~~${p.task}~~`, card: undefined, actions: [] } };
+    return { update: { text: `${cancelledLine(level, mood)}\n~~${p.task}~~`, card: undefined, actions: [] } };
   }
 
   if (verb === 'ok') {
@@ -245,7 +275,7 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
     ).lean<PromiseDoc>();
     return {
       update: {
-        text: `${confirmedLine(level, mention(p.owner), !!p.deadline)}\n${detailLine(updated!)}`,
+        text: `${confirmedLine(level, mention(p.owner), !!p.deadline, mood)}\n${detailLine(updated!)}`,
         card: undefined,
         actions: activeActions(id, level),
       },
@@ -300,11 +330,11 @@ export async function handlePromiseForm(ev: FormSubmit): Promise<Reply> {
   }
   const updated = await PromiseModel.findByIdAndUpdate(id, { $set: set }, { returnDocument: 'after' }).lean<PromiseDoc>();
   const pending = updated!.status === 'pending_confirm';
-  const level = await getSpeechLevel(p.platform, p.groupId);
+  const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
   const who = mention(p.owner);
   return {
     update: {
-      text: `${pending ? askLine(level, who, updated!.task) : confirmedLine(level, who, !!updated!.deadline)}\n${detailLine(updated!)}`,
+      text: `${pending ? askLine(level, who, updated!.task, mood) : confirmedLine(level, who, !!updated!.deadline, mood)}\n${detailLine(updated!)}`,
       card: undefined,
       actions: pending ? confirmActions(id, level) : activeActions(id, level),
     },

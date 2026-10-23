@@ -246,7 +246,7 @@ export async function kasAtur(cmd: CommandInvocation): Promise<Reply> {
   };
 }
 
-async function ledgerEntries(groupId: string): Promise<LedgerEntry[]> {
+export async function ledgerEntries(groupId: string): Promise<LedgerEntry[]> {
   const rows = await TransactionModel.find({ groupId }).sort({ createdAt: 1 }).lean();
   return rows.map((r) => ({
     id: String(r._id),

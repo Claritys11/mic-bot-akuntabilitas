@@ -33,6 +33,7 @@ export class OpenRouterProvider implements LLMProvider {
     private readonly visionEp: LLMEndpoint,
     private readonly jsonMode: boolean,
     private readonly timeoutMs: number,
+    private readonly providerSort?: 'latency' | 'throughput' | 'price',
   ) {
     this.enabled = Boolean(text.apiKey);
   }
@@ -70,8 +71,8 @@ export class OpenRouterProvider implements LLMProvider {
   }
 
   static fromConfig(config: Config): OpenRouterProvider {
-    const { text, vision, jsonMode, timeoutMs } = config.llm;
-    return new OpenRouterProvider(text, vision, jsonMode, timeoutMs);
+    const { text, vision, jsonMode, timeoutMs, providerSort } = config.llm;
+    return new OpenRouterProvider(text, vision, jsonMode, timeoutMs, providerSort);
   }
 
   usage(): LLMUsage {
@@ -107,6 +108,8 @@ export class OpenRouterProvider implements LLMProvider {
       max_tokens: Math.max(opts.maxTokens ?? 800, MIN_MAX_TOKENS),
     };
     if (opts.json && this.jsonMode) body.response_format = { type: 'json_object' };
+    // Field khusus OpenRouter; endpoint lain (Hermes lokal) tidak dikirimi.
+    if (this.providerSort && new URL(ep.baseUrl).hostname.endsWith('openrouter.ai')) body.provider = { sort: this.providerSort };
 
     const res = await fetch(`${ep.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',

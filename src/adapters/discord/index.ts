@@ -57,7 +57,8 @@ function toIncoming(msg: Message<true>): IncomingMessage {
     author: toMember(guildId, msg.author.id, displayName(msg.member, msg.author.username)),
     text,
     mentions,
-    mentionsBot: msg.client.user ? msg.mentions.users.has(msg.client.user.id) : false,
+    // Di-tag atau membalas pesan bot sama-sama dianggap ngajak ngobrol.
+    mentionsBot: msg.client.user ? msg.mentions.users.has(msg.client.user.id) || msg.mentions.repliedUser?.id === msg.client.user.id : false,
     authorIsAdmin: Boolean(msg.member?.permissions.has(ADMIN)),
     timestamp: msg.createdAt,
     attachments: [...msg.attachments.values()].map((a) => ({

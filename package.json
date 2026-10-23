@@ -9,7 +9,8 @@
     "test": "bun test",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "simulate": "bun scripts/simulate.ts"
+    "simulate": "bun scripts/simulate.ts",
+    "eval:voice": "bun scripts/eval-voice.ts"
   },
   "engines": {
     "node": ">=18"
