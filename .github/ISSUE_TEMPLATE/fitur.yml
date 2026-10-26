@@ -1,0 +1,25 @@
+name: ✨ Usulan fitur
+description: Ide fitur atau perbaikan pengalaman pengguna
+labels: [enhancement]
+body:
+  - type: textarea
+    id: masalah
+    attributes:
+      label: Masalah di kelas
+      description: Situasi nyata apa yang ingin diselesaikan?
+    validations:
+      required: true
+  - type: textarea
+    id: usulan
+    attributes:
+      label: Usulan
+      description: Contoh obrolan atau tombol yang dibayangkan.
+    validations:
+      required: true
+  - type: checkboxes
+    id: prinsip
+    attributes:
+      label: Prinsip produk
+      options:
+        - label: Tidak menambah langkah (jalan dari obrolan biasa)
+        - label: Tidak mengawasi individu / menjaga privasi

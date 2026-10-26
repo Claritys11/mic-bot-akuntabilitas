@@ -1,9 +1,41 @@
 # Bot Akuntabilitas Kelas (MIC)
 
 Bot yang tinggal di grup kelas dan mengambil peran yang dihindari semua orang: **menagih** — dengan
-*unggah-ungguh*. Lihat `CLAUDE.md` (aturan) dan `PLAN.md` (milestone).
+*unggah-ungguh*.
 
-## Fitur prototipe
+> Proyek lomba **MIC (Moklet Idea Challenge)** — bidang Teknologi Digital. Tema kearifan lokal:
+> *ewuh pakewuh* (sungkan menegur) adalah masalahnya, *unggah-ungguh* adalah cara bot berbicara,
+> *gotong royong / kas bersama* adalah praktik yang didukung.
+
+## Status pengembangan
+
+| Bagian | Status |
+|---|---|
+| Fase 1 — MVP Discord (janji, tagihan, kas, rangkuman, info lomba) | ✅ prototipe jalan di server uji |
+| Bot terasa manusiawi (nimbrung, baca suasana, jawab "ada tugas?") | ✅ v0.2.0 |
+| M5 Siap demo · M6 Pilot di kelas | 🚧 berikutnya |
+| Fase 2 — Gampang diatur (panel `/pengaturan`, kas lengkap, lomba dari link/poster) | 📋 direncanakan (M7–M11) |
+| Adapter WhatsApp (Baileys) | 🔜 setelah lomba |
+
+Detail tiap milestone dan checklist-nya ada di [`PLAN.md`](PLAN.md) dan tab **Milestones / Issues** repo ini.
+
+## Dokumentasi
+
+| Dokumen | Untuk |
+|---|---|
+| [`PLAN.md`](PLAN.md) | Roadmap & milestone (sumber kebenaran apa yang sedang dikerjakan) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Alur pesan, folder, data, LLM, scheduler |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Setup dev, alur branch/PR, gaya commit, aturan arsitektur |
+| [`SECURITY.md`](SECURITY.md) | Rahasia, privasi data, cara melapor celah |
+| [`CHANGELOG.md`](CHANGELOG.md) | Riwayat perubahan per versi |
+| [`CLAUDE.md`](CLAUDE.md) | Aturan proyek (juga dibaca Claude Code) |
+
+## Tech stack
+
+Bun · TypeScript strict · discord.js v14 · MongoDB + Mongoose · zod · OpenRouter (default
+`z-ai/glm-5.3-flash`) · Docker Compose
+
+## Fitur yang sudah jalan
 
 | Fitur | Cara pakai |
 |---|---|
@@ -14,6 +46,9 @@ Bot yang tinggal di grup kelas dan mengambil peran yang dihindari semua orang: *
 | Kas kelas | `/kas atur`, kirim foto bukti di channel kas → cek duplikat/nominal/tanggal → bendahara ✅/❌, `/kas rekap`, `/kas ekspor` (CSV) |
 | Rangkuman | `/rangkum jam:3` (pesan mentah disimpan maks. 48 jam, TTL index) |
 | Info lomba | maks. 2 posting/minggu sesuai jurusan, tombol 👥 *Bentuk tim* → thread + janji awal, `/lomba list`, `/lomba tambah` |
+| Nimbrung & suasana | bot menanggapi janji seperti teman sekelas, menyesuaikan nada (santai/serius/tegang/sedih) |
+| Tanya jawab | *"ada tugas gak nih?"*, *"kas aku udah lunas?"*, *"ada lomba ga?"* — dijawab dari data, tanpa perlu tag |
+| Konfirmasi ketik | balas *"jadi dong, besok"* / *"ga jadi"* selain lewat tombol |
 
 Tanpa API key LLM, deteksi janji tetap jalan memakai heuristik. Rangkuman dan pembacaan bukti
 transfer butuh LLM.
@@ -118,4 +153,8 @@ bun test          # parser tanggal, eskalasi, template, prefilter, ledger, verif
 bun run typecheck
 bun run lint
 bun simulate      # simulasi end-to-end core + Mongo tanpa Discord (DB mic_sim), tambah --llm untuk pakai LLM
+bun run eval:voice  # uji suara bot (janji & tanya jawab) ke LLM sungguhan, tidak menyentuh DB
 ```
+
+CI GitHub Actions menjalankan typecheck, lint, dan test di setiap push/PR. Panduan lengkap:
+[`CONTRIBUTING.md`](CONTRIBUTING.md).

@@ -1,0 +1,33 @@
+name: 🐛 Laporan bug
+description: Bot salah tangkap, crash, atau perilaku tidak sesuai
+labels: [bug]
+body:
+  - type: textarea
+    id: apa
+    attributes:
+      label: Apa yang terjadi?
+      description: Sertakan pesan yang diketik dan balasan bot (samarkan nama/info pribadi).
+    validations:
+      required: true
+  - type: textarea
+    id: harapan
+    attributes:
+      label: Seharusnya bagaimana?
+    validations:
+      required: true
+  - type: textarea
+    id: langkah
+    attributes:
+      label: Langkah mengulang
+      placeholder: "1. Ketik 'aku yang bikin PPT ya, Jumat'\n2. Klik ✅\n3. ..."
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [janji, kas, lomba, obrolan/suasana, setup/pengaturan, rangkuman, lainnya]
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (opsional)
+      description: JANGAN tempel token atau API key.
+      render: shell
