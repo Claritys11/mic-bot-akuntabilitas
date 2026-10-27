@@ -12,7 +12,8 @@
     "simulate": "bun scripts/simulate.ts",
     "eval:voice": "bun scripts/eval-voice.ts",
     "pilot:metrics": "bun scripts/pilot-metrics.ts",
-    "demo:check": "bun scripts/demo-check.ts"
+    "demo:check": "bun scripts/demo-check.ts",
+    "holdout": "bun scripts/holdout.ts"
   },
   "engines": {
     "node": ">=18"

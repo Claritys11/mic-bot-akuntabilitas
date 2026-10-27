@@ -50,11 +50,15 @@ Dihitung dengan `bun run pilot:metrics --dari 2026-11-02 --sampai 2026-11-20` (b
 Set berlabel di `test/prefilter.test.ts` dipakai untuk menyetel prefilter, jadi angkanya **bukan**
 ukuran akurasi. Ukuran jujur:
 
-1. Dengan persetujuan, ekspor chat grup kelas (WhatsApp "Ekspor chat" → .txt) dari 2–3 kelas.
-2. Hapus nama & nomor (ganti `Siswa1`, `Siswa2`, …) sebelum disimpan.
-3. Dua orang melabeli tiap pesan: janji ya/tidak, pemilik, deadline. Bedanya dirembukkan.
+1. Dengan persetujuan, ekspor chat grup kelas (WhatsApp → ⋮ → Lainnya → Ekspor chat → Tanpa media) dari 2–3 kelas.
+2. Anonimkan sebelum disimpan — nama jadi `Siswa1…`, nomor HP & email dihapus, pemetaan nama tidak disimpan:
+   `bun run holdout prepare ekspor.txt data/holdout-kelasA.jsonl` (folder `data/` tidak ikut git).
+   Hapus file .txt asli setelahnya.
+3. Dua orang melabeli tiap pesan (janji ya/tidak, pemilik, ungkapan deadline): `bun run holdout label data/holdout-kelasA.jsonl`.
+   Bedanya dirembukkan.
 4. Simpan sebagai holdout — **jangan pernah dilihat saat mengubah prompt/prefilter**.
-5. Hitung precision & recall prefilter + LLM pada holdout sekali di akhir pilot.
+5. Sekali di akhir pilot: `bun run holdout eval data/holdout-kelasA.jsonl` → precision, recall, F1, ketepatan
+   deadline, dan daftar kesalahan (hilang di prefilter / ditolak LLM / salah tangkap).
 
 ## Jadwal
 

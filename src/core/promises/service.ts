@@ -29,7 +29,7 @@ import { heuristicExtract, looksLikePromise, type Extraction } from './prefilter
 import { isRepeatPromise, shouldAutoActivate } from './autoActivate.ts';
 import { acceptLlmLine, askLine, autoLine, cancelledLine, confirmedLine, doneLine, LABELS } from './voice.ts';
 
-const ExtractionSchema = z.object({
+export const ExtractionSchema = z.object({
   isPromise: z.boolean(),
   task: z.string().default(''),
   ownerName: z.string().nullish(),
@@ -39,7 +39,7 @@ const ExtractionSchema = z.object({
   reply: z.string().nullish(),
 });
 
-const MIN_CONFIDENCE = 0.6;
+export const MIN_CONFIDENCE = 0.6;
 
 
 export const ids = {

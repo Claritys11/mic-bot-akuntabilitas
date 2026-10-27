@@ -67,7 +67,9 @@ Versi demo: kurasi, bukan scraper.
 - [x] Mode diam untuk baseline (`/pilot mode diam|aktif`) + `/pilot ekspor` dengan kolom cek ketua
 - [ ] Persetujuan wali murid & pilih kelas pilot
 - [ ] Minggu 1 diam (baseline) → minggu 2–3 aktif; ketua cek sampel acak tiap akhir fase
-- [ ] Holdout berlabel dari chat asli (anonim) → precision/recall deteksi janji
+- [x] Alat holdout: `bun run holdout prepare|label|eval` (parser ekspor WA, anonimisasi, precision/recall alur penuh)
+- [x] Biaya LLM nyata per hari → `pilot:metrics` (per kelas per bulan)
+- [ ] Holdout berlabel dari chat asli (anonim) → jalankan `holdout eval` sekali di akhir pilot
 - [ ] Survei singkat + wawancara 5–10 ketua/bendahara
 
 ## Tambahan di luar rencana awal (sudah jadi)

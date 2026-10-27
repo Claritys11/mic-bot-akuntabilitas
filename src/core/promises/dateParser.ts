@@ -32,6 +32,8 @@ function addDays(base: DayRef, n: number): DayRef {
   return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() };
 }
 
+const sameDay = (a: DayRef, b: DayRef) => a.year === b.year && a.month === b.month && a.day === b.day;
+
 const isBefore = (a: DayRef, b: DayRef) =>
   Date.UTC(a.year, a.month, a.day) < Date.UTC(b.year, b.month, b.day);
 
@@ -95,19 +97,36 @@ function findDay(t: string, today: DayRef, mondayIdx: number): DayRef | null {
   return null;
 }
 
-function findTime(t: string): { hour: number; minute: number } | null {
+interface TimeOfDay {
+  hour: number;
+  minute: number;
+  /** "jam 8" tanpa pagi/malam: bisa 08.00 atau 20.00. */
+  ambiguous: boolean;
+}
+
+function findTime(t: string): TimeOfDay | null {
   const m = t.match(/\b(?:jam|pukul|pkl)\.?\s*(\d{1,2})(?:[:.](\d{2}))?(?:\s*(pagi|siang|sore|malam))?/);
   if (m) {
     let hour = Number(m[1]);
     const minute = m[2] ? Number(m[2]) : 0;
-    const period = m[3];
+    const period = m[3] ?? t.match(/\b(pagi|siang|sore|malam)\b/)?.[1];
     if ((period === 'sore' || period === 'malam') && hour < 12) hour += 12;
     if (period === 'siang' && hour < 6) hour += 12;
-    if (hour <= 23 && minute <= 59) return { hour, minute };
+    if (hour <= 23 && minute <= 59) return { hour, minute, ambiguous: !period && hour >= 1 && hour <= 12 };
   }
   const pm = t.match(/\b(pagi|siang|sore|malam)\b/);
-  if (pm) return { hour: PERIOD_HOUR[pm[1]!]!, minute: 0 };
+  if (pm) return { hour: PERIOD_HOUR[pm[1]!]!, minute: 0, ambiguous: false };
   return null;
+}
+
+/** Jam tanpa tanggal: kemunculan terdekat setelah `now` ("jam 8" pukul 19.04 → 20.00 hari ini). */
+function nextOccurrence(time: TimeOfDay, today: DayRef, now: Date): Date {
+  const hours = time.ambiguous ? [time.hour % 12, (time.hour % 12) + 12] : [time.hour];
+  const candidates = [0, 1].flatMap((d) => {
+    const day = addDays(today, d);
+    return hours.map((h) => fromWIB(day.year, day.month, day.day, h, time.minute));
+  });
+  return candidates.filter((c) => c > now).sort((a, b) => a.getTime() - b.getTime())[0]!;
 }
 
 /**
@@ -121,9 +140,10 @@ export function parseRelativeDate(input: string, now: Date): ParsedDate | null {
   const mondayIdx = (w.weekday + 6) % 7;
 
   const time = findTime(t);
-  let day = findDay(t, today, mondayIdx);
-  // "nanti malam" / "jam 7 malam" tanpa tanggal → hari ini
-  if (!day && time && /\b(nanti|ntar|ini)\b/.test(t)) day = today;
+  const day = findDay(t, today, mondayIdx);
+  // Jam disebut tanpa tanggal ("jam 8", "nanti jam 9 malam") → kemunculan terdekat ke depan.
+  const vagueDay = !day || (/\b(nanti|ntar|hari\s*ini|malam\s*ini|sore\s*ini|siang\s*ini|pagi\s*ini)\b/.test(t) && sameDay(day, today));
+  if (time && vagueDay && /\b(?:jam|pukul|pkl)\b/.test(t)) return { date: nextOccurrence(time, today, now), hasTime: true };
   if (!day) return null;
 
   const { hour, minute } = time ?? { hour: DEFAULT_HOUR, minute: 0 };

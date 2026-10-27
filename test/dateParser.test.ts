@@ -9,6 +9,27 @@ const p = (s: string, now = NOW) => {
   return r ? formatWIB(r.date, 'iso') : null;
 };
 
+describe('jam tanpa hari → kemunculan terdekat ke depan (temuan holdout)', () => {
+  const at = (iso: string) => new Date(iso);
+  test('"jam 8" diucapkan 19.04 → 20.00 hari ini, bukan 08.00 yang sudah lewat', () => {
+    expect(p('nanti tak kirim jam 8', at('2026-11-02T12:04:00Z'))).toBe('2026-11-02 20:00');
+    expect(p('jam 8', at('2026-11-02T12:04:00Z'))).toBe('2026-11-02 20:00');
+  });
+  test('"jam 8" diucapkan 07.00 → 08.00 hari ini', () => {
+    expect(p('jam 8 ya', at('2026-11-02T00:00:00Z'))).toBe('2026-11-02 08:00');
+  });
+  test('"jam 8" diucapkan 21.00 → 08.00 besok', () => {
+    expect(p('jam 8', at('2026-11-02T14:00:00Z'))).toBe('2026-11-03 08:00');
+  });
+  test('bagian hari disebut → tidak ditebak ulang', () => {
+    expect(p('jam 7 pagi', at('2026-11-02T12:04:00Z'))).toBe('2026-11-03 07:00');
+    expect(p('nanti jam 9 malam', at('2026-11-02T12:04:00Z'))).toBe('2026-11-02 21:00');
+  });
+  test('hari disebut → jam dipakai apa adanya', () => {
+    expect(p('besok jam 8', at('2026-11-02T12:04:00Z'))).toBe('2026-11-03 08:00');
+  });
+});
+
 describe('parseRelativeDate (Asia/Jakarta)', () => {
   test('nama hari → kemunculan berikutnya, jam default 20:00', () => {
     expect(p('aku yang bikin PPT ya, Jumat jadi')).toBe('2026-10-23 20:00');
