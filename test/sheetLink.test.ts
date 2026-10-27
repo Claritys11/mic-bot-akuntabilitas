@@ -18,12 +18,12 @@ describe('laporan kas dibuat bot', () => {
   });
 
   test('pemilik sheet bukan pengurus kas lagi → bot berhenti menulis ke Drive-nya', () => {
-    const owned = { sheetAuth: 'v1.x', sheetOwnerId: 'budi', sheetOwnerAdmin: false };
+    const owned = { sheetAuth: 'v1.x', sheetOwnerId: 'budi' };
     expect(ownerStillAllowed(group(owned, { bendahara: ['budi'] }))).toBe(true);
     expect(ownerStillAllowed(group({ ...owned, reviewerIds: ['budi'] }))).toBe(true);
     expect(ownerStillAllowed(group(owned, { bendahara: ['sari'] }))).toBe(false);
-    // Admin server yang membuat → tetap boleh.
-    expect(ownerStillAllowed(group({ ...owned, sheetOwnerAdmin: true }))).toBe(true);
+    // Status admin tidak disimpan sebagai izin permanen: tanpa peran kas → berhenti.
+    expect(ownerStillAllowed(group({ ...owned, sheetOwnerAdmin: true }))).toBe(false);
     // Sheet manual (akun layanan) tidak terikat pemilik.
     expect(ownerStillAllowed(group({ sheetAuth: null, sheetOwnerId: null }))).toBe(true);
   });

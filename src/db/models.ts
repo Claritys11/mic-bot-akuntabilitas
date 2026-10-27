@@ -64,7 +64,6 @@ const GroupSchema = new Schema(
       sheetAuth: { type: String, default: null },
       // Pemilik sheet (yang login). Bukan pengurus kas lagi → bot berhenti menulis data kelas ke Drive-nya.
       sheetOwnerId: { type: String, default: null },
-      sheetOwnerAdmin: { type: Boolean, default: false },
       // Bot sudah menawarkan "buatkan laporan Google Sheets" (sekali saja).
       sheetOfferedAt: { type: Date, default: null },
     },
@@ -272,7 +271,6 @@ const SheetLinkSchema = new Schema({
   platform: { type: String, required: true },
   groupId: { type: String, required: true },
   actor: { platformUserId: { type: String, required: true }, displayName: { type: String, required: true } },
-  actorIsAdmin: { type: Boolean, default: false },
   channelId: { type: String, required: true },
   // Rahasia sementara (≤ 30 menit) — tidak pernah ditampilkan.
   deviceCode: { type: String, required: true },

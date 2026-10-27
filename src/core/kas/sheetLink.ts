@@ -52,7 +52,18 @@ export async function handleSheetLinkAction(ev: ActionEvent, linker?: SheetLinke
   const group = await getGroup(ev.platform, groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   if (verb === 'later') return { update: { actions: [], text: 'Oke, nanti aja. Kapan pun bisa lewat `/kas sheet` 👍' } };
-  if (!can(group, ev, 'kas')) return { reply: { text: 'Yang bisa bikin laporan kas cuma bendahara / tim inti kas ya 🙏', private: true } };
+  // Sheet tinggal di Drive pribadi yang menekan → wajib peran kas eksplisit (bukan sekadar admin server),
+  // supaya hak itu bisa dicek ulang setiap kali bot menulis (lihat ownerStillAllowed).
+  if (!hasKasRole(group, ev.actor.platformUserId)) {
+    return {
+      reply: {
+        text: ev.isAdmin
+          ? 'Sheet-nya dibuat di Google Drive orang yang menekan, jadi harus bendahara / tim inti kas. Minta bendahara yang klik, atau tambahkan dirimu dulu: `/kas atur tambah_tim:@kamu`.'
+          : 'Yang bisa bikin laporan kas cuma bendahara / tim inti kas ya 🙏',
+        private: true,
+      },
+    };
+  }
   if (!linker) return { reply: { text: 'Fitur ini belum diaktifkan operator bot (GOOGLE_OAUTH_CLIENT_ID). Sementara pakai `/kas ekspor`.', private: true } };
   if (group.kas?.sheetId) return { reply: { text: `Laporan kas sudah ada: ${sheetUrl(group.kas.sheetId)}\nMau ganti? \`/kas sheet link:putus\` dulu.`, private: true } };
   let s;
@@ -69,7 +80,6 @@ export async function handleSheetLinkAction(ev: ActionEvent, linker?: SheetLinke
     {
       $set: {
         actor: { platformUserId: ev.actor.platformUserId, displayName: ev.actor.displayName },
-        actorIsAdmin: ev.isAdmin,
         channelId: ev.channelId,
         deviceCode: s.deviceCode,
         interval: s.interval,
@@ -146,7 +156,6 @@ async function finishLink(group: GroupDoc, l: Link, credential: string, linker: 
         'kas.sheetTitle': sheet.title.slice(0, 100),
         'kas.sheetAuth': credential,
         'kas.sheetOwnerId': l.actor.platformUserId,
-        'kas.sheetOwnerAdmin': Boolean(l.actorIsAdmin),
         'kas.sheetDirtyAt': now(),
         'kas.sheetSyncedAt': null,
         'kas.sheetError': null,
@@ -205,9 +214,12 @@ export async function collectSheetOffers(at: Date): Promise<OutgoingMessage[]> {
   return out;
 }
 
-/** Pemilik sheet buatan bot masih pengurus kas? (sheet manual lewat akun layanan selalu boleh). */
+/** Peran kas eksplisit (bendahara / tim inti kas) — status admin server sengaja tidak dihitung. */
+const hasKasRole = (g: GroupDoc, userId: string) => can(g, { isAdmin: false, actor: { platformUserId: userId } }, 'kas');
+
+/** Pemilik sheet buatan bot masih pengurus kas? Dicek live dari peran saat ini (sheet manual selalu boleh). */
 export function ownerStillAllowed(g: GroupDoc): boolean {
   const k = g.kas;
   if (!k?.sheetAuth || !k.sheetOwnerId) return true;
-  return can(g, { isAdmin: Boolean(k.sheetOwnerAdmin), actor: { platformUserId: k.sheetOwnerId } }, 'kas');
+  return hasKasRole(g, k.sheetOwnerId);
 }
