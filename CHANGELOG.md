@@ -4,6 +4,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 
 ## [Belum dirilis]
 
+### Ditambahkan
+- Adapter WhatsApp eksperimental (Baileys), nonaktif default: balas angka, form balasan, perintah teks, bukti kas lewat chat pribadi ke bendahara.
+- Discord & WhatsApp bisa jalan bersamaan; pesan terjadwal dirutekan per platform.
+
 ### Direncanakan
 - Fase 2 — pengaturan ramah pengguna: panel `/pengaturan`, peran pengurus, kas lengkap (tunai,
   pengeluaran, patungan, riwayat tarif), tambah lomba dari link/poster, jam tenang, pengaturan lewat

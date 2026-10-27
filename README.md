@@ -15,7 +15,7 @@ Bot yang tinggal di grup kelas dan mengambil peran yang dihindari semua orang: *
 | Bot terasa manusiawi (nimbrung, baca suasana, jawab "ada tugas?") | ✅ v0.2.0 |
 | M5 Siap demo · M6 Pilot di kelas | 🚧 berikutnya |
 | Fase 2 — Gampang diatur (panel `/pengaturan`, kas lengkap, lomba dari link/poster) | 📋 direncanakan (M7–M11) |
-| Adapter WhatsApp (Baileys) | 🔜 setelah lomba |
+| Adapter WhatsApp (Baileys) | 🧪 kode ada (`src/adapters/whatsapp`), belum tersambung live — nonaktif default; pengembangan sementara di Discord |
 
 Detail tiap milestone dan checklist-nya ada di [`PLAN.md`](PLAN.md) dan tab **Milestones / Issues** repo ini.
 
@@ -91,6 +91,22 @@ tanpa opsi. Cara cepat tetap ada: `/setup kelas:"XI RPL 2" jurusan:RPL tutur:sop
 
 `DEMO_TIME_SCALE=1440` berarti 1 menit nyata = 1 hari, jadi tagihan H-2 sampai lewat deadline untuk janji
 "Jumat" muncul dalam beberapa menit. Jam virtual kembali normal setelah restart.
+
+## WhatsApp (eksperimental)
+
+Baileys = WhatsApp Web tidak resmi; pakai **nomor khusus bot**, nomornya bisa diblokir WhatsApp.
+
+```
+WHATSAPP_ENABLED=true
+WA_PHONE_NUMBER=62812xxxxxxx   # nomor bot, angka saja
+```
+
+Saat pertama jalan, log mencetak **kode pairing**. Di HP nomor bot: WhatsApp → Perangkat tertaut →
+Tautkan perangkat → "Tautkan dengan nomor telepon saja" → masukkan kode (berlaku beberapa menit;
+siapkan HP dulu sebelum menjalankan bot). Sesi tersimpan di `data/wa-auth` (rahasia, di `.gitignore`).
+
+Perbedaan dengan Discord: tombol → *balas angka*, form → balas template `Label: isi`, slash command →
+perintah teks (`/janji list`, `/kas rekap`, `/bantuan`), bukti kas boleh lewat chat pribadi ke bot.
 
 ## LLM: OpenRouter atau Hermes (profil terpisah)
 

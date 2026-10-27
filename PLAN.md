@@ -259,7 +259,12 @@ tunai 30rb → otomatis lunas 3 bulan. "keluar 25rb spidol" → laporan bulanan 
 - Jam tenang default **21.00–06.00 WIB**, bisa diubah per kelas.
 - Riwayat pengaturan disimpan **180 hari**.
 
+## WhatsApp (Baileys) — 🧪 kode ada, ditunda
+- [x] Adapter: balas angka, form balasan, perintah teks, bukti kas via chat pribadi, routing scheduler
+- [ ] Pairing nomor bot berhasil & uji live di grup (gagal pada percobaan pertama 27 Okt; dev lanjut di Discord)
+- [ ] Jawaban jujur di pitch soal batas platform (Baileys tidak resmi, risiko blokir nomor)
+
 ## Setelah lomba
-- Adapter WhatsApp (Baileys) dengan nomor dummy — panel pengaturan dirender "balas 1/2/3"
+- Panel pengaturan dirender "balas 1/2/3" di WhatsApp
 - Scraper info lomba, sinkron Google Calendar/Notion
 - Dasbor web read-only untuk bendahara (ekspor LPJ), tetap tanpa dasbor guru

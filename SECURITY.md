@@ -2,9 +2,8 @@
 
 ## Melaporkan celah
 
-Repo ini privat. Laporkan celah langsung ke maintainer (pemilik repo) lewat DM atau
-[security advisory privat](../../security/advisories/new). Jangan membuka issue biasa untuk celah
-yang bisa disalahgunakan.
+Repo ini **public**. Laporkan celah lewat [security advisory privat](../../security/advisories/new)
+atau DM ke maintainer — jangan membuka issue biasa untuk celah yang bisa disalahgunakan.
 
 ## Rahasia
 
@@ -12,6 +11,7 @@ yang bisa disalahgunakan.
 - Token Discord, key OpenRouter, dan URI database hanya di `.env` / secret deploy.
 - Token sempat bocor? **Reset segera** di Discord Developer Portal / OpenRouter, lalu beri tahu tim.
 - Setiap developer memakai bot Discord dev sendiri.
+- Sesi WhatsApp (`data/wa-auth`) setara password akun WA bot: jangan di-commit/dibagikan; nomor bot hanya di `.env`.
 
 ## Prinsip yang dijaga kode
 
