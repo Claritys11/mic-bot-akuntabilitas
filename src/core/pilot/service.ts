@@ -12,11 +12,17 @@ export async function pilotMode(cmd: CommandInvocation): Promise<Reply> {
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   const mode = cmd.options.mode === 'diam' ? 'diam' : cmd.options.mode === 'jeda' ? 'jeda' : 'off';
+  const previous = group.pilotMode ?? 'off';
   await GroupModel.updateOne({ _id: group._id }, { $set: { pilotMode: mode } });
   const text = {
     diam: '🤫 Mode diam aktif: aku hanya mencatat janji di obrolan, tanpa membalas, menagih, atau mengirim pengingat kas/lomba. Janji yang tercatat bisa diekspor dengan `/pilot ekspor`.',
     jeda: '⏸️ Bot dijeda di kelas ini: aku tidak membaca, mencatat, membalas, atau menagih apa pun sampai `/pilot mode aktif`. Pengingat yang terlewat selama jeda tidak dikirim beruntun.',
-    off: '🔔 Mode aktif: aku kembali membalas & menagih seperti biasa. Janji dari masa diam tetap tidak ditagih (biar baseline bersih).',
+    off:
+      previous === 'diam'
+        ? '🔔 Mode aktif: aku kembali membalas & menagih seperti biasa. Janji dari masa diam tetap tidak ditagih (biar baseline bersih).'
+        : previous === 'jeda'
+          ? '▶️ Jeda dibuka: aku aktif lagi. Pengingat yang terlewat tidak dikirim beruntun — hanya tahap terbaru.'
+          : '🔔 Bot sudah dalam mode aktif.',
   }[mode];
   console.log(`[pilot] ${group.className}: mode ${mode} oleh ${cmd.actor.displayName}`);
   return { reply: { private: true, text } };

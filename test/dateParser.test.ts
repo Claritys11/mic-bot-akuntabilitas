@@ -30,6 +30,22 @@ describe('jam tanpa hari → kemunculan terdekat ke depan (temuan holdout)', () 
   });
 });
 
+describe('bagian hari yang sedang berjalan (QA T18)', () => {
+  const at = (iso: string) => new Date(iso);
+  test('"nanti malam" diucapkan 20.27 → 23.00 malam ini (bukan 20.00 yang sudah lewat)', () => {
+    expect(p('aku yang bikin rangkuman rumus nanti malam', at('2026-10-27T13:27:00Z'))).toBe('2026-10-27 23:00');
+  });
+  test('"nanti sore" diucapkan 17.00 → 18.00', () => {
+    expect(p('nanti sore', at('2026-10-27T10:00:00Z'))).toBe('2026-10-27 18:00');
+  });
+  test('"nanti pagi" diucapkan 21.00 → besok pagi', () => {
+    expect(p('nanti pagi', at('2026-10-27T14:00:00Z'))).toBe('2026-10-28 08:00');
+  });
+  test('belum lewat → jam biasa', () => {
+    expect(p('nanti malam', at('2026-10-27T05:00:00Z'))).toBe('2026-10-27 20:00');
+  });
+});
+
 describe('kosakata waktu Jawa', () => {
   test('sesuk / mengko bengi / sesuk esuk', () => {
     expect(p('tak garapne sesuk')).toBe('2026-10-23 20:00');

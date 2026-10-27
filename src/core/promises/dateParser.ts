@@ -20,6 +20,8 @@ const BULAN: Record<string, number> = {
 };
 
 const PERIOD_HOUR: Record<string, number> = { pagi: 8, siang: 12, sore: 16, malam: 20 };
+/** Batas akhir wajar tiap bagian hari (untuk "nanti malam" yang diucapkan saat malam sudah mulai). */
+const PERIOD_END: Record<string, number> = { pagi: 11, siang: 15, sore: 18, malam: 23 };
 
 interface DayRef {
   year: number;
@@ -155,5 +157,17 @@ export function parseRelativeDate(input: string, now: Date): ParsedDate | null {
   if (!day) return null;
 
   const { hour, minute } = time ?? { hour: DEFAULT_HOUR, minute: 0 };
-  return { date: fromWIB(day.year, day.month, day.day, hour, minute), hasTime: time !== null };
+  const date = fromWIB(day.year, day.month, day.day, hour, minute);
+  // "nanti malam" diucapkan 20.27: jam default bagian hari (20.00) sudah lewat → pakai akhir bagian hari
+  // itu (23.00); kalau bagian harinya sudah lewat ("nanti pagi" jam 21.00) → besok (temuan QA T18).
+  const period = t.match(/\b(pagi|siang|sore|malam)\b/)?.[1];
+  const periodOnly = period && !/\b(?:jam|pukul|pkl)\b/.test(t);
+  if (periodOnly && sameDay(day, today) && date <= now) {
+    const end = PERIOD_END[period]!;
+    const endDate = fromWIB(day.year, day.month, day.day, end, 0);
+    if (endDate > now) return { date: endDate, hasTime: true };
+    const next = addDays(today, 1);
+    return { date: fromWIB(next.year, next.month, next.day, hour, minute), hasTime: true };
+  }
+  return { date, hasTime: time !== null };
 }

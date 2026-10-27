@@ -75,7 +75,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
             { name: 'Channel kas', value: g.kasChannelId ? channelRef(g.kasChannelId) : '—', inline: true },
             { name: 'Channel info lomba', value: g.oppsChannelId ? channelRef(g.oppsChannelId) : '—', inline: true },
           ],
-          footer: 'Cukup ngobrol seperti biasa — kalau ada yang berjanji ("aku yang bikin PPT, Jumat jadi"), aku minta konfirmasi lalu mengingatkan.',
+          footer: 'Cukup ngobrol seperti biasa — kalau ada yang berjanji ("aku yang bikin PPT, Jumat jadi"), aku catat lalu ingatkan. Panduan: /bantuan',
         },
       },
     };

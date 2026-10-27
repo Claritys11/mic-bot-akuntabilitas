@@ -207,9 +207,12 @@ async function applyReply(i: ButtonInteraction | ModalSubmitInteraction | ChatIn
     const payload = renderBody(r.reply);
     const isPrivate = r.reply.private ?? false;
     if (deferred && i.isChatInputCommand()) {
-      // Command selalu di-defer secara privat; balasan publik dikirim sebagai follow-up.
+      // Command selalu di-defer secara privat. Follow-up PERTAMA setelah defer menggantikan balasan
+      // privat itu (ikut privat) — jadi isi dulu balasan privatnya, baru kirim yang publik sebagai pesan
+      // terpisah, lalu hapus yang privat (temuan QA T20: balasan /setup & /kas atur hilang).
       if (isPrivate) await i.editReply(payload);
       else {
+        await i.editReply({ content: '✅' });
         await i.followUp(payload);
         await i.deleteReply().catch(() => undefined);
       }
