@@ -31,6 +31,11 @@ export interface IncomingMessage {
   mentionsBot?: boolean;
   /** Pengirim admin grup (untuk wawancara setup). */
   authorIsAdmin?: boolean;
+  /**
+   * Chat pribadi ke bot (WhatsApp). `groupId` diisi adapter dengan kelas tempat pengirim terdaftar,
+   * `channelId` = chat pribadinya. Dipakai untuk kirim bukti kas & tanya status tanpa dilihat grup.
+   */
+  isDirect?: boolean;
   timestamp: Date;
 }
 

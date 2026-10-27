@@ -48,7 +48,7 @@ const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUser
 
 /** Gambar di channel kas → ekstraksi vision → verifikasi → tunggu persetujuan bendahara. */
 export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
-  if (!group.kasChannelId || msg.channelId !== group.kasChannelId) return [];
+  if (!msg.isDirect && (!group.kasChannelId || msg.channelId !== group.kasChannelId)) return [];
   const image = msg.attachments.find(isImage);
   if (!image) return [];
 
@@ -114,17 +114,37 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     footer: 'Bot hanya mencatat & memeriksa kejanggalan umum, bukan forensik. Uang tetap lewat bank/e-wallet.',
   };
   const treasurer = group.kas?.treasurerId ? ` ${mention({ platformUserId: group.kas.treasurerId })}` : '';
+  const reviewActions = [
+    { id: ids.approve(id), label: '✅ Setujui', kind: 'success' as const },
+    { id: ids.reject(id), label: '❌ Tolak', kind: 'danger' as const },
+  ];
+  if (msg.isDirect) {
+    // Dikirim lewat chat pribadi → tombol ke bendahara (DM), bukan ke pengirim; cadangan: grup.
+    const fallbackChannelId = group.kasChannelId ?? group.mainChannelId;
+    const review: OutgoingMessage = group.kas?.treasurerId
+      ? {
+          to: { kind: 'dm', member: { platform: msg.platform, groupId: msg.groupId, platformUserId: group.kas.treasurerId, displayName: 'Bendahara' }, fallbackChannelId },
+          text: `Ada bukti kas baru dari ${mention(msg.author)} 🧾`,
+          card,
+          actions: reviewActions,
+        }
+      : { to: { kind: 'channel', channelId: fallbackChannelId }, text: `Ada bukti kas baru dari ${mention(msg.author)} 🧾`, card, actions: reviewActions };
+    return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: 'Makasih 🙏 Buktinya udah aku terusin ke bendahara buat dicek.' }, review];
+  }
   return [
     {
       to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
       text: `Terima kasih ${mention(msg.author)} 🙏 Bukti dicatat, menunggu cek bendahara.${treasurer}`,
       card,
-      actions: [
-        { id: ids.approve(id), label: '✅ Setujui', kind: 'success' },
-        { id: ids.reject(id), label: '❌ Tolak', kind: 'danger' },
-      ],
+      actions: reviewActions,
     },
   ];
+}
+
+/** Bukti dikirim lewat chat pribadi → kabari pengirimnya di chat itu juga (tombol ada di chat bendahara). */
+function notifyPrivateSender(proof: { channelId: string }, group: GroupDoc, text: string): OutgoingMessage[] {
+  const viaGroup = proof.channelId === group.kasChannelId || proof.channelId === group.mainChannelId;
+  return viaGroup ? [] : [{ to: { kind: 'channel', channelId: proof.channelId }, text }];
 }
 
 async function approve(proofId: string, nominal: number, ev: ActionEvent | FormSubmit, group: GroupDoc): Promise<Reply> {
@@ -169,6 +189,7 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
       },
       actions: [],
     },
+    messages: notifyPrivateSender(proof, group, `Kas kamu ${rupiah(nominal)} udah tercatat untuk ${entries.map((e) => periodLabel(e.period)).join(', ')} ✅ Makasih ya!`),
   };
 }
 
@@ -192,6 +213,7 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
         },
         actions: [],
       },
+      messages: notifyPrivateSender(proof, group, `Bukti transfer kasmu belum bisa dicatat 🙏 Coba hubungi ${mention(ev.actor)} ya.`),
     };
   }
   if (verb === 'ok') {

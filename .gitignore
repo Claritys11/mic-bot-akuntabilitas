@@ -3,3 +3,6 @@ node_modules/
 dist/
 *.log
 .remember/
+
+# Sesi login WhatsApp (setara password — jangan pernah di-commit)
+data/

@@ -5,6 +5,7 @@ import { getGroup, setupGroup, upsertMember } from './groups.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
 import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps/service.ts';
+import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
@@ -87,11 +88,20 @@ export function createCore(llm: LLMProvider): Core {
     async onMessage(raw) {
       const msg = { ...raw, text: sanitize(raw.text), author: cleanMember(raw.author), mentions: raw.mentions.map(cleanMember) };
       const group = await getGroup(msg.platform, msg.groupId);
+      if (msg.isDirect) {
+        // Chat pribadi: tidak masuk buffer obrolan grup & tidak dideteksi sebagai janji (privasi).
+        if (!group) return [];
+        if (msg.attachments.length) return handleKasProof(llm, msg, group);
+        return answerQuestion(llm, { ...msg, mentionsBot: true }, group);
+      }
       const onboarding = await handleOnboardingMessage(msg, opsFor(msg.platform), Boolean(group));
       if (onboarding) return onboarding;
       if (!group) return [];
       await Promise.all([upsertMember(msg.author), bufferMessage(msg)]);
-      if (msg.channelId === group.kasChannelId && msg.attachments.length) {
+      // Kalau channel kas = channel utama (WhatsApp: satu grup), hanya foto berketerangan kas yang dibaca —
+      // foto/meme biasa tidak dikirim ke LLM.
+      const kasHere = msg.channelId === group.kasChannelId && (group.kasChannelId !== group.mainChannelId || looksLikeKas(msg.text));
+      if (kasHere && msg.attachments.length) {
         return handleKasProof(llm, msg, group);
       }
       // "jadi dong" untuk janji yang baru ditanya → konfirmasi tanpa klik.

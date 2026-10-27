@@ -6,6 +6,9 @@ services:
     environment:
       MONGODB_URI: mongodb://mongo:27017/mic
       TZ: Asia/Jakarta
+    volumes:
+      # Sesi login WhatsApp: tetap ada walau container dibuat ulang (tidak perlu pairing lagi).
+      - wa-auth:/app/data/wa-auth
     depends_on:
       mongo:
         condition: service_healthy
@@ -28,3 +31,4 @@ services:
 
 volumes:
   mongo-data:
+  wa-auth:

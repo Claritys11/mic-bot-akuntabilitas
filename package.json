@@ -16,6 +16,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "baileys": "7.0.0-rc14",
     "discord.js": "^14.27.0",
     "mongoose": "^9.11.3",
     "zod": "^4.6.7"

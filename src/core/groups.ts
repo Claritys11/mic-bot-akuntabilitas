@@ -53,6 +53,20 @@ export async function upsertMembers(members: Member[]): Promise<void> {
   );
 }
 
+/** Tambah anggota yang belum tercatat tanpa menimpa nama yang sudah dikenal (WhatsApp: daftar peserta grup hanya berisi nomor). */
+export async function addMissingMembers(members: Member[]): Promise<void> {
+  if (!members.length) return;
+  await MemberModel.bulkWrite(
+    members.map((m) => ({
+      updateOne: {
+        filter: { platform: m.platform, groupId: m.groupId, platformUserId: m.platformUserId },
+        update: { $setOnInsert: { displayName: m.displayName, active: true } },
+        upsert: true,
+      },
+    })),
+  );
+}
+
 export async function listMembers(platform: Platform, groupId: string): Promise<Member[]> {
   const rows = await MemberModel.find({ platform, groupId, active: true }).sort({ displayName: 1 }).lean();
   return rows.map((r) => ({
@@ -61,6 +75,15 @@ export async function listMembers(platform: Platform, groupId: string): Promise<
     platformUserId: r.platformUserId,
     displayName: r.displayName,
   }));
+}
+
+/** Kelas (yang sudah diatur) tempat salah satu ID ini terdaftar sebagai anggota. */
+export async function groupsOfMember(platform: Platform, userIds: string[]): Promise<string[]> {
+  const ids = userIds.filter(Boolean);
+  if (!ids.length) return [];
+  const groupIds = await MemberModel.distinct('groupId', { platform, platformUserId: { $in: ids }, active: true });
+  const configured = await GroupModel.find({ platform, groupId: { $in: groupIds } }, { groupId: 1 }).lean();
+  return configured.map((g) => g.groupId);
 }
 
 export async function findMemberByName(platform: Platform, groupId: string, name: string): Promise<Member | null> {

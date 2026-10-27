@@ -203,3 +203,24 @@ OnboardingSchema.index({ platform: 1, groupId: 1 }, { unique: true });
 OnboardingSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 3 * 24 * 3600 });
 export const OnboardingModel = mongoose.model('Onboarding', OnboardingSchema);
 export type OnboardingDoc = InferSchemaType<typeof OnboardingSchema> & { _id: mongoose.Types.ObjectId };
+
+// ---------- WhatsApp: tombol & form yang menunggu balasan (pengganti komponen Discord) ----------
+// WhatsApp tidak punya tombol untuk akun biasa → bot menulis "balas 1/2/3" dan menyimpan pilihan
+// di sini, supaya balasan tetap dikenali setelah bot restart. Hilang sendiri setelah 7 hari.
+const WaPromptSchema = new Schema({
+  chatId: { type: String, required: true },
+  messageId: { type: String, required: true },
+  /** Kelas tempat aksi ini berlaku (chat pribadi bendahara tetap terikat ke kelasnya). */
+  groupId: { type: String, required: true },
+  actions: { type: [{ id: String, label: String, _id: false }], default: [] },
+  form: {
+    type: new Schema({ id: String, title: String, fields: { type: [{ id: String, label: String, required: Boolean, _id: false }], default: [] } }, { _id: false }),
+    default: null,
+  },
+  createdAt: { type: Date, required: true, default: Date.now },
+});
+WaPromptSchema.index({ chatId: 1, messageId: 1 }, { unique: true });
+WaPromptSchema.index({ chatId: 1, createdAt: -1 });
+WaPromptSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 3600 });
+export const WaPromptModel = mongoose.model('WaPrompt', WaPromptSchema);
+export type WaPromptDoc = InferSchemaType<typeof WaPromptSchema> & { _id: mongoose.Types.ObjectId };

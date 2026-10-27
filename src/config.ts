@@ -8,6 +8,11 @@ const EnvSchema = z.object({
   DISCORD_CLIENT_ID: optionalString,
   DISCORD_GUILD_ID: optionalString,
 
+  // WhatsApp (Baileys, tidak resmi). Sesi login disimpan di WA_AUTH_DIR — rahasia, jangan di-commit.
+  WHATSAPP_ENABLED: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).default('false')),
+  WA_PHONE_NUMBER: z.preprocess((v) => (typeof v === 'string' ? v.replace(/[\s+()-]/g, '') || undefined : v), z.string().regex(/^\d{8,15}$/, 'angka saja dengan kode negara, mis. 6281234567890').optional()),
+  WA_AUTH_DIR: z.preprocess(emptyToUndefined, z.string().default('./data/wa-auth')),
+
   MONGODB_URI: z.preprocess(emptyToUndefined, z.string().default('mongodb://localhost:27017/mic')),
 
   LLM_BASE_URL: z.preprocess(emptyToUndefined, z.string().url().default('https://openrouter.ai/api/v1')),
@@ -39,6 +44,7 @@ export interface LLMEndpoint {
 
 export interface Config {
   discord: { token?: string; clientId?: string; guildId?: string };
+  whatsapp: { enabled: boolean; phoneNumber?: string; authDir: string };
   mongoUri: string;
   llm: {
     text: LLMEndpoint;
@@ -63,6 +69,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const backupFor = (baseUrl: string) => (new URL(baseUrl).hostname.endsWith('openrouter.ai') ? e.BACKUP_OPENROUTER_API_KEY : undefined);
   return {
     discord: { token: e.DISCORD_TOKEN, clientId: e.DISCORD_CLIENT_ID, guildId: e.DISCORD_GUILD_ID },
+    whatsapp: { enabled: e.WHATSAPP_ENABLED === 'true', phoneNumber: e.WA_PHONE_NUMBER, authDir: e.WA_AUTH_DIR },
     mongoUri: e.MONGODB_URI,
     llm: {
       text: { baseUrl: e.LLM_BASE_URL, apiKey: textKey ?? e.BACKUP_OPENROUTER_API_KEY, backupApiKey: backupFor(e.LLM_BASE_URL), model: e.LLM_TEXT_MODEL },
@@ -80,9 +87,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   };
 }
 
-export function requireDiscord(config: Config): { token: string; guildId?: string } {
+/** Token Discord kalau ada; null = adapter Discord tidak dijalankan. */
+export function discordOptions(config: Config): { token: string; guildId?: string } | null {
   const { token, guildId } = config.discord;
-  if (!token) throw new Error('DISCORD_TOKEN wajib diisi untuk menjalankan bot Discord.');
   // DISCORD_CLIENT_ID tidak lagi wajib: application id dibaca dari sesi login.
-  return { token, guildId };
+  return token ? { token, guildId } : null;
 }
