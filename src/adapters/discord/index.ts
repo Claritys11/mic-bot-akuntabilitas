@@ -24,6 +24,7 @@ import { COMMANDS, type OptionSpec } from '../../core/commands.ts';
 import { upsertMembers } from '../../core/groups.ts';
 import type { Core } from '../../core/index.ts';
 import type { Context, IncomingMessage, Member, OptionValue, OutgoingMessage, Reply, Sender } from '../../core/types.ts';
+import { sendAll } from '../sendAll.ts';
 import { renderBody, renderModal } from './render.ts';
 
 const ADMIN = PermissionFlagsBits.ManageGuild;
@@ -59,6 +60,7 @@ function toIncoming(msg: Message<true>): IncomingMessage {
     mentions,
     // Di-tag atau membalas pesan bot sama-sama dianggap ngajak ngobrol.
     mentionsBot: msg.client.user ? msg.mentions.users.has(msg.client.user.id) || msg.mentions.repliedUser?.id === msg.client.user.id : false,
+    replyToOther: Boolean(msg.mentions.repliedUser && msg.mentions.repliedUser.id !== msg.client.user?.id),
     authorIsAdmin: Boolean(msg.member?.permissions.has(ADMIN)),
     timestamp: msg.createdAt,
     attachments: [...msg.attachments.values()].map((a) => ({
@@ -221,9 +223,7 @@ async function applyReply(i: ButtonInteraction | ModalSubmitInteraction | ChatIn
   } else if (!deferred && !i.replied) {
     if (i.isButton()) await i.deferUpdate();
   }
-  for (const m of r.messages ?? []) {
-    await sender.send(m).catch((err) => console.error('[discord] gagal kirim:', (err as Error).message));
-  }
+  await sendAll(sender, r.messages ?? [], 'discord');
 }
 
 const ERROR_TEXT = 'Maaf, ada kendala di sisi bot. Coba lagi sebentar ya 🙏';
@@ -390,7 +390,7 @@ export function createDiscordAdapter(core: Core, opts: { token: string; guildId?
     const channelId = greetChannel(guild);
     if (!channelId) return console.warn(`[discord] tidak ada channel yang bisa ditulisi di ${guild.name}`);
     try {
-      for (const m of await core.onJoin({ platform: 'discord', groupId: guild.id, channelId })) await sender.send(m);
+      await sendAll(sender, await core.onJoin({ platform: 'discord', groupId: guild.id, channelId }), 'discord');
     } catch (err) {
       console.error('[discord] gagal menyapa server baru:', err);
     }
@@ -426,7 +426,8 @@ export function createDiscordAdapter(core: Core, opts: { token: string; guildId?
     if (msg.author.bot || !msg.inGuild()) return;
     try {
       const out = await core.onMessage(toIncoming(msg));
-      for (const m of out) await sender.send(m);
+      // Satu pesan gagal (mis. izin channel) tidak boleh menggugurkan pesan lain di giliran yang sama.
+      await sendAll(sender, out, 'discord');
     } catch (err) {
       console.error('[discord] gagal memproses pesan:', err);
     }

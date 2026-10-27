@@ -29,6 +29,8 @@ export interface IncomingMessage {
   mentions: Member[];
   /** Bot disebut/di-tag di pesan ini. */
   mentionsBot?: boolean;
+  /** Pesan ini membalas (reply) pesan orang lain — bukan pesan bot. */
+  replyToOther?: boolean;
   /** Pengirim admin grup (untuk wawancara setup). */
   authorIsAdmin?: boolean;
   /**
@@ -88,6 +90,15 @@ export interface MessageBody {
 
 export interface OutgoingMessage extends MessageBody {
   to: Target;
+  /**
+   * Kirim hanya kalau pesan SEBELUMNYA di daftar yang sama berhasil terkirim. Dipakai untuk kalimat
+   * seperti "udah aku terusin ke bendahara" — jangan mengklaim sesuatu yang gagal (temuan QA T9).
+   */
+  onlyIfPreviousSent?: boolean;
+  /** Pengganti (teks) kalau syarat onlyIfPreviousSent tidak terpenuhi — memberi tahu dengan jujur. */
+  elseText?: string;
+  /** Dipanggil setelah pesan benar-benar terkirim (mis. menandai kartu bukti sudah sampai). */
+  afterSend?: () => Promise<void>;
 }
 
 export interface FormField {

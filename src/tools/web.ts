@@ -140,7 +140,7 @@ function request(url: URL): Promise<RawResponse> {
         const type = String(res.headers['content-type'] ?? '');
         if (status >= 200 && status < 300 && !/text\/|xml|rss|atom/i.test(type)) {
           res.destroy();
-          return reject(new FetchRefused('Bukan halaman teks'));
+          return reject(new FetchRefused(/pdf/i.test(type) ? 'linknya berupa PDF — aku baru bisa baca halaman web biasa' : 'linknya bukan halaman web biasa'));
         }
         if (Number(res.headers['content-length'] ?? 0) > MAX_PAGE_BYTES) {
           res.destroy();
@@ -160,7 +160,21 @@ function request(url: URL): Promise<RawResponse> {
       },
     );
     req.on('timeout', () => req.destroy(new FetchRefused('Halaman terlalu lama merespons')));
-    req.on('error', (e) => reject(e instanceof FetchRefused ? e : new FetchRefused(`Halaman tidak bisa dibuka (${e.message})`)));
+    req.on('error', (e) => {
+      if (e instanceof FetchRefused) return reject(e);
+      console.warn(`[web] ${url.hostname}: ${e.message}`);
+      // Pesan untuk siswa, bukan istilah teknis (temuan QA T12).
+      const code = (e as NodeJS.ErrnoException).code ?? '';
+      reject(
+        new FetchRefused(
+          /CERT|SELF_SIGNED|certificate/i.test(`${code} ${e.message}`)
+            ? 'situsnya tidak bisa dibuka dengan aman (sertifikatnya bermasalah)'
+            : /ENOTFOUND|EAI_AGAIN/.test(code)
+              ? 'alamat situsnya tidak ditemukan'
+              : 'situsnya tidak bisa dibuka sekarang',
+        ),
+      );
+    });
     req.end();
   });
 }

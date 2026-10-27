@@ -2,6 +2,7 @@ import type { Core } from '../core/index.ts';
 import { timeScale } from '../core/time.ts';
 import type { Sender } from '../core/types.ts';
 import { beat } from '../db/health.ts';
+import { sendAll } from '../adapters/sendAll.ts';
 
 // Polling tiap 60 detik ke koleksi persisten (Promise, Group kas, Opportunity) → aman restart:
 // status tahap disimpan di DB, jadi tidak ada timer di memori yang hilang saat bot mati.
@@ -23,9 +24,7 @@ export function startScheduler(core: Core, sender: Sender, baseIntervalMs = 60_0
       await beat();
       if (failures >= ALERT_AFTER_FAILURES) alert?.('✅ Scheduler MIC-Bot pulih.');
       failures = 0;
-      for (const m of messages) {
-        await sender.send(m).catch((err) => console.error('[scheduler] gagal kirim:', (err as Error).message));
-      }
+      await sendAll(sender, messages, 'scheduler');
       if (messages.length) console.log(`[scheduler] ${messages.length} pesan terkirim`);
     } catch (err) {
       console.error('[scheduler] tick gagal:', err);

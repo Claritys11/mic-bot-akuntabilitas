@@ -17,6 +17,7 @@ import { addMissingMembers, groupsOfMember } from '../../core/groups.ts';
 import type { Core } from '../../core/index.ts';
 import { mention, type Attachment, type Context, type IncomingMessage, type Member, type MessageBody, type OutgoingMessage, type Reply, type Sender } from '../../core/types.ts';
 import { MemberModel, WaPromptModel, type WaPromptDoc } from '../../db/models.ts';
+import { sendAll } from '../sendAll.ts';
 import { jidUser, matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa } from './format.ts';
 
 // Adapter WhatsApp lewat Baileys (WhatsApp Web multi-device, tidak resmi).
@@ -220,7 +221,7 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
         await sendBody(ctx.chatId, r.reply, { groupId, quoteId: ctx.replyTo });
       }
     }
-    for (const m of r.messages ?? []) await sender.send(m).catch((err) => console.error('[whatsapp] gagal kirim:', (err as Error).message));
+    await sendAll(sender, r.messages ?? [], 'whatsapp');
   }
 
   // ---------- Pesan masuk ----------
@@ -354,7 +355,7 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
     };
     if (!incoming.text && !incoming.attachments.length) return;
     const out = await core.onMessage(incoming);
-    for (const o of out) await sender.send(o);
+    await sendAll(sender, out, 'whatsapp');
   }
 
   // ---------- Grup: sapa saat masuk, sinkron anggota ----------
@@ -371,7 +372,7 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
   async function greet(groupId: string) {
     try {
       await addMissingMembers(await membersOf(groupId));
-      for (const o of await core.onJoin({ platform: PLATFORM, groupId, channelId: groupId })) await sender.send(o);
+      await sendAll(sender, await core.onJoin({ platform: PLATFORM, groupId, channelId: groupId }), 'whatsapp');
     } catch (err) {
       console.error('[whatsapp] gagal menyapa grup:', (err as Error).message);
     }

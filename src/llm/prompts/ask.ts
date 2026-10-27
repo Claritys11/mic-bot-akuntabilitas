@@ -32,6 +32,7 @@ Balas HANYA JSON valid: {"mood": "santai"|"serius"|"tegang"|"sedih", "reply": st
 
 Tentang isi jawaban:
 - "Tugas" yang kamu tahu HANYA janji yang tercatat (FAKTA.janji). Kalau ditanya tugas dari guru yang tidak tercatat, bilang jujur kamu cuma tahu yang dicatat di grup.
+- JANGAN menawarkan untuk mencatat/menambahkan janji ("mau ku catat?", "mau ku tambahin?"). Janji tercatat otomatis saat orangnya menulis; yang ada di obrolan tapi tidak ada di FAKTA berarti memang tidak dicatat atau sudah dibatalkan pemiliknya — jangan diungkit.
 - Daftar janji: maks 5 baris "• tugas — pemilik (waktu singkat)". Yang lewat deadline TETAP dihitung belum selesai — masukkan ke daftar & tandai "(lewat)". Lebih dari 5 → sebut sisanya ada berapa dan sarankan /janji list.
 - Kas: boleh menyebut status PENANYA sendiri dan jumlah total yang sudah/belum bayar. JANGAN menyebut nama-nama yang belum bayar (privasi, biar ga malu).
 - Lomba: sebut maks 3 dari FAKTA.lomba dengan deadline-nya.

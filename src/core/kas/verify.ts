@@ -19,7 +19,7 @@ export type ProofFlag =
 
 export const FLAG_TEXT: Record<ProofFlag, string> = {
   duplicate_image: 'Gambar ini pernah dikirim sebelumnya',
-  similar_image: 'Gambar sangat mirip bukti yang pernah dikirim (mungkin di-screenshot ulang)',
+  similar_image: 'Gambar sangat mirip bukti yang pernah dikirim — cek nomor ref-nya',
   recipient_mismatch: 'Penerima transfer bukan rekening kas yang terdaftar',
   recipient_unreadable: 'Nama penerima tidak terbaca',
   duplicate_ref: 'Nomor referensi transaksi sudah pernah dipakai',
@@ -43,12 +43,27 @@ export interface ProofData {
   isTransferProof?: boolean;
 }
 
+export interface SeenImage {
+  pHash: string;
+  /** Kunci refId (lihat refKey) atau null kalau tidak terbaca. */
+  refKey: string | null;
+  nominal: number | null;
+  tanggal: string | null;
+  /** Bisa null: detail penerima dihapus setelah bukti ditinjau (privasi). */
+  penerima: string | null;
+}
+
+/** Jarak dHash ≤ ini + ref BERBEDA + nominal/tanggal/penerima sama → curiga ref diedit di screenshot lama. */
+export const EDITED_REF_MAX_DISTANCE = 3;
+
 export interface VerifyContext {
   now: Date;
   amount: number;
   period: KasPeriod;
   seenHashes: Set<string>;
   seenPHashes?: string[];
+  /** Bukti sebelumnya + data pembeda, untuk membedakan "struk mirip" dari "struk yang sama". */
+  seenImages?: SeenImage[];
   /** Nama rekening/e-wallet tujuan kas yang sah. Kosong = belum diatur, penerima tidak dicek. */
   recipients?: string[];
   /** Kunci refId yang sudah dipakai (lihat refKey). */
@@ -63,7 +78,7 @@ export function verifyProof(p: ProofData, ctx: VerifyContext): ProofFlag[] {
   const flags: ProofFlag[] = [];
   if (p.isTransferProof === false) flags.push('not_a_proof');
   if (ctx.seenHashes.has(p.imageHash)) flags.push('duplicate_image');
-  else if (p.imagePHash && ctx.seenPHashes?.some((h) => hamming(h, p.imagePHash!) <= SIMILAR_MAX_DISTANCE)) flags.push('similar_image');
+  else if (p.imagePHash && isSimilarToSeen(p, ctx)) flags.push('similar_image');
   if (ctx.recipients?.length) {
     if (!p.penerima?.trim()) flags.push('recipient_unreadable');
     else if (!ctx.recipients.some((r) => recipientMatches(p.penerima!, r))) flags.push('recipient_mismatch');
@@ -118,4 +133,23 @@ export function recipientMatches(extracted: string, expected: string): boolean {
     if (!masked && p.length >= 3) solid = true;
   }
   return solid && used.size >= Math.min(2, es.length);
+}
+
+const normName = (s: string | null | undefined) => (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/**
+ * Struk dari aplikasi bank yang sama tata letaknya identik → dHash mirip walau transaksinya berbeda
+ * (temuan QA T14). Jadi: kalau nomor ref terbaca di keduanya dan BERBEDA → transaksi lain, kecuali
+ * gambarnya nyaris identik DAN nominal, tanggal, penerima sama (tanda ref diedit di screenshot lama).
+ */
+function isSimilarToSeen(p: ProofData, ctx: VerifyContext): boolean {
+  const key = p.refId ? (ctx.refKey ?? normalizeRef)(p.refId) : null;
+  const legacy = (ctx.seenPHashes ?? []).map((h) => ({ pHash: h, refKey: null, nominal: null, tanggal: null, penerima: null }));
+  return [...(ctx.seenImages ?? []), ...legacy].some((seen) => {
+    const d = hamming(seen.pHash, p.imagePHash!);
+    if (d > SIMILAR_MAX_DISTANCE) return false;
+    if (!key || !seen.refKey || key === seen.refKey) return true;
+    const samePenerima = !seen.penerima || !p.penerima || normName(seen.penerima) === normName(p.penerima);
+    return d <= EDITED_REF_MAX_DISTANCE && seen.nominal === p.nominal && seen.tanggal === p.tanggal && samePenerima;
+  });
 }

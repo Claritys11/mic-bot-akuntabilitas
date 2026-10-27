@@ -1,6 +1,6 @@
 import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
-import { GroupModel, PromiseModel, type GroupDoc, type PromiseDoc } from '../../db/models.ts';
+import { GroupModel, MessageBufferModel, PromiseModel, type GroupDoc, type PromiseDoc } from '../../db/models.ts';
 import { chatJson, type LLMProvider } from '../../llm/provider.ts';
 import { promisePrompt } from '../../llm/prompts/promise.ts';
 import { initialStage } from '../billing/escalation.ts';
@@ -47,6 +47,7 @@ export const ids = {
   edit: (id: string) => `p:edit:${id}`,
   cancel: (id: string) => `p:no:${id}`,
   done: (id: string) => `p:done:${id}`,
+  undo: (id: string) => `p:undo:${id}`,
   form: (id: string) => `pf:edit:${id}`,
 };
 
@@ -224,6 +225,9 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
 const YES = /^(?:jadi|iya+|iy|ya+|yoi|yup|yes|ok(?:e+|ay)?|siap|sip|gas(?:s|keun)?|bener|beneran|betul|aman|fix|pasti|inggih|nggih|leres)\b/i;
 const NO = /^(?:(?:ga|gak|nggak|ngga|enggak|engga|g|tidak|ora)\s*jadi|bukan(?:\s+janji\w*)?|salah\s+tangkap|batal|ga|gak|nggak|ngga|enggak|engga|tidak|nope|bercanda|canda|skip|mboten|ora)\b/i;
 const TYPED_REPLY_WINDOW_MS = 15 * 60_000;
+/** "bukan" polos (tanpa reply/tag) hanya dihitung sebentar setelah bot mencatat. */
+const PLAIN_NO_WINDOW_MS = 3 * 60_000;
+const UNDO_WINDOW_MS = 10 * 60_000;
 /** Membalas (reply) pesan bot boleh lebih lama dari jendela biasa. */
 const TYPED_REPLY_WINDOW_TAGGED_MS = 60 * 60_000;
 
@@ -284,7 +288,12 @@ export async function handleTypedConfirmation(msg: IncomingMessage, group: Group
  * kata "bukan" di obrolan biasa tidak membatalkan janji.
  */
 async function handleTypedOnAuto(msg: IncomingMessage, group: GroupDoc, answer: 'yes' | 'no'): Promise<OutgoingMessage[] | null> {
-  if (!msg.mentionsBot) return null;
+  if (msg.replyToOther) return null; // membalas orang lain → bukan jawaban untuk bot
+  // "bukan" yang diketik biasa (tanpa reply/tag) juga diterima, tapi ketat: pesan pendek, ≤ 3 menit
+  // setelah dicatat, dan pesan pertama pemilik sejak itu (temuan QA T5: orang jarang memakai fitur Reply).
+  const plain = !msg.mentionsBot;
+  if (plain && msg.text.trim().split(/\s+/).length > 3) return null;
+  const since = new Date(now().getTime() - (plain ? PLAIN_NO_WINDOW_MS : TYPED_REPLY_WINDOW_TAGGED_MS));
   const p = await PromiseModel.findOne({
     groupId: msg.groupId,
     channelId: msg.channelId,
@@ -292,19 +301,50 @@ async function handleTypedOnAuto(msg: IncomingMessage, group: GroupDoc, answer: 
     status: 'active',
     autoActivated: true,
     ownerTouched: false,
-    createdAt: { $gte: new Date(Date.now() - TYPED_REPLY_WINDOW_TAGGED_MS) },
+    askedAt: { $gte: since },
   })
-    .sort({ createdAt: -1 })
+    .sort({ askedAt: -1 })
     .lean<PromiseDoc>();
   if (!p) return null;
+  if (plain) {
+    const between = await MessageBufferModel.countDocuments({
+      groupId: msg.groupId,
+      channelId: msg.channelId,
+      authorId: msg.author.platformUserId,
+      createdAt: { $gt: p.askedAt!, $lt: msg.timestamp },
+    });
+    if (between > 0) return null;
+  }
   if (answer === 'yes') {
     await PromiseModel.updateOne({ _id: p._id }, { $set: { ownerTouched: true } });
     return [];
   }
-  const done = await PromiseModel.findOneAndUpdate({ _id: p._id, status: 'active', ownerTouched: false }, { $set: { status: 'cancelled' } });
+  const done = await PromiseModel.findOneAndUpdate({ _id: p._id, status: 'active', ownerTouched: false }, { $set: { status: 'cancelled', cancelledAt: now() } });
   if (!done) return null;
   const mood = detectMood([msg.text]);
-  return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: `${cancelledLine(group.speechLevel as SpeechLevel, mood)}\n~~${p.task}~~` }];
+  const id = String(p._id);
+  return [
+    {
+      to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
+      text: `${cancelledLine(group.speechLevel as SpeechLevel, mood)}\n~~${p.task}~~`,
+      // "ga jadi" bisa berarti "tugasnya batal", bukan "salah tangkap" → beri jalan balik.
+      actions: [{ id: ids.undo(id), label: '↩️ Urungkan', kind: 'secondary' }],
+    },
+  ];
+}
+
+/** Batal tadi keliru → aktifkan lagi (pemilik saja, ≤ 10 menit). */
+async function undoCancel(p: PromiseDoc, ev: ActionEvent): Promise<Reply> {
+  if (p.owner.platformUserId !== ev.actor.platformUserId) return deny(`Hanya ${p.owner.displayName} yang bisa mengurungkan.`);
+  if (p.status !== 'cancelled' || !p.cancelledAt || now().getTime() - p.cancelledAt.getTime() > UNDO_WINDOW_MS) return deny('Sudah tidak bisa diurungkan — tulis lagi janjinya ya.');
+  const back = await PromiseModel.findOneAndUpdate(
+    { _id: p._id, status: 'cancelled' },
+    { $set: { status: 'active', cancelledAt: null, ownerTouched: true } },
+    { returnDocument: 'after' },
+  ).lean<PromiseDoc>();
+  if (!back) return deny('Sudah tidak bisa diurungkan.');
+  const level = await getSpeechLevel(p.platform, p.groupId);
+  return { update: { text: `${confirmedLine(level, mention(p.owner), Boolean(back.deadline), 'santai')}\n${detailLine(back)}`, actions: activeActions(String(p._id), level) } };
 }
 
 /** Buat janji langsung (dipakai fitur lain, mis. "Bentuk tim"). Tetap perlu dikonfirmasi. */
@@ -360,6 +400,8 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
           : [],
     };
   }
+
+  if (verb === 'undo') return undoCancel(p, ev);
 
   if (!canManage(p, ev)) return deny(`Hanya ${p.owner.displayName} (atau pengurus kelas) yang bisa mengubah janji ini.`);
 

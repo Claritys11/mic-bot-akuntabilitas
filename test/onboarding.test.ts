@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseClassName, parseKas, parseMajors } from '../src/core/onboarding/parse.ts';
+import { majorsInClassName, parseClassName, parseKas, parseMajors } from '../src/core/onboarding/parse.ts';
 import { relevance } from '../src/core/opps/relevance.ts';
 
 describe('jawaban wawancara: nama kelas', () => {
@@ -54,5 +54,17 @@ describe('relevansi lomba untuk kelas multi-jurusan', () => {
   test('skor = jurusan paling cocok', () => {
     expect(relevance(['tkj', 'ctf'], 'RPL, TKJ, PG')).toBe(relevance(['tkj', 'ctf'], 'TKJ'));
     expect(relevance(['pg', 'game'], 'RPL, TKJ, PG')).toBe(4); // tag jurusan +3, game +1
+  });
+});
+
+describe('tebak jurusan dari nama kelas (QA T1)', () => {
+  test.each([
+    ['XI RPL 1', ['RPL']],
+    ['X TKJ-2', ['TKJ']],
+    ['XII DKV & Animasi', ['DKV', 'ANIMASI']],
+    ['XI International', []],
+    ['XI MIPA 3', ['MIPA']],
+  ])('%p → %p', (name, want) => {
+    expect(majorsInClassName(name)).toEqual(want);
   });
 });

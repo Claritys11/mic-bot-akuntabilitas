@@ -24,6 +24,8 @@ const GroupSchema = new Schema(
       amount: { type: Number, default: 0 },
       period: { type: String, enum: ['mingguan', 'bulanan'], default: 'bulanan' },
       treasurerId: { type: String, default: null },
+      // Kapan iuran diatur — jangan langsung menagih kas yang baru saja diatur.
+      setAt: { type: Date, default: null },
       // Nama rekening/e-wallet tujuan kas yang sah; bukti dengan penerima lain ditandai.
       recipients: { type: [String], default: [] },
       // Bukti dicek di channel tim inti (null = DM bendahara / channel kas).
@@ -81,6 +83,7 @@ const PromiseSchema = new Schema(
     // Waktu bot bertanya "jadi?" (jam bot, ikut DEMO_TIME_SCALE — createdAt memakai jam sistem).
     askedAt: { type: Date, default: null },
     nudgedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
     followedUpAt: { type: Date, default: null },
     ownerTouched: { type: Boolean, default: false },
   },
@@ -113,6 +116,10 @@ const KasProofSchema = new Schema(
     status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     reviewedBy: { type: String, default: null },
     reviewedAt: { type: Date, default: null },
+    // Kartu sudah sampai ke bendahara/tim inti? null → scheduler mencoba kirim ulang (maks 5x).
+    reviewSentAt: { type: Date, default: null },
+    reviewAttempts: { type: Number, default: 0 },
+    lastAttemptAt: { type: Date, default: Date.now },
   },
   { timestamps: true },
 );

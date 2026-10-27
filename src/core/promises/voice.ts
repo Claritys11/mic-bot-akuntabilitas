@@ -6,7 +6,14 @@ import type { SpeechLevel } from '../types.ts';
 // beberapa variasi masing-masing supaya tidak terdengar seperti mesin.
 
 type Pick = () => number;
-const choose = <T>(xs: readonly T[], pick: Pick): T => xs[Math.floor(pick() * xs.length) % xs.length]!;
+// Kalimat yang sama berturut-turut terasa seperti mesin (temuan QA T6) → hindari mengulang pilihan terakhir.
+const lastPick = new WeakMap<readonly unknown[], number>();
+const choose = <T>(xs: readonly T[], pick: Pick): T => {
+  let i = Math.floor(pick() * xs.length) % xs.length;
+  if (pick === Math.random && xs.length > 1 && lastPick.get(xs) === i) i = (i + 1 + Math.floor(Math.random() * (xs.length - 1))) % xs.length;
+  lastPick.set(xs, i);
+  return xs[i]!;
+};
 type Tone = 'ceria' | 'netral';
 const toneOf = (mood: Mood): Tone => (isLight(mood) ? 'ceria' : 'netral');
 
@@ -77,18 +84,18 @@ type AutoFn = (who: string) => string;
 const AUTO: Record<SpeechLevel, Record<Tone, readonly AutoFn[]>> = {
   santai: {
     ceria: [
-      (who) => `siap ${who}, udah ku catat ✍️ nanti ku colek sebelum deadline. salah tangkap? balas pesan ini "bukan"`,
-      (who) => `noted ${who} 🔥 ku catat ya, nanti ku ingetin. kalau bukan janji, balas "bukan" aja`,
+      (who) => `siap ${who}, udah ku catat ✍️ nanti ku colek sebelum deadline. salah tangkap? ketik aja "bukan"`,
+      (who) => `noted ${who} 🔥 ku catat ya, nanti ku ingetin. kalau bukan janji, ketik "bukan" aja`,
     ],
-    netral: [(who) => `oke ${who}, ku catat. nanti ku ingetin sebelum deadline. kalau bukan janji, balas pesan ini "bukan"`],
+    netral: [(who) => `oke ${who}, ku catat. nanti ku ingetin sebelum deadline. kalau bukan janji, ketik "bukan"`],
   },
   sopan: {
-    ceria: [(who) => `Baik ${who}, sudah saya catat 🙂 Nanti saya ingatkan menjelang deadline. Kalau bukan janji, balas pesan ini "bukan".`],
-    netral: [(who) => `Baik ${who}, sudah saya catat. Nanti saya ingatkan menjelang deadline. Kalau bukan janji, balas pesan ini "bukan".`],
+    ceria: [(who) => `Baik ${who}, sudah saya catat 🙂 Nanti saya ingatkan menjelang deadline. Kalau bukan janji, ketik "bukan".`],
+    netral: [(who) => `Baik ${who}, sudah saya catat. Nanti saya ingatkan menjelang deadline. Kalau bukan janji, ketik "bukan".`],
   },
   krama: {
-    ceria: [(who) => `Sendika ${who}, sampun kula cathet 🙏 Mangke kula engetaken. Menawi sanes janji, mangga bales "bukan".`],
-    netral: [(who) => `Sendika ${who}, sampun kula cathet. Mangke kula engetaken. Menawi sanes janji, mangga bales "bukan".`],
+    ceria: [(who) => `Sendika ${who}, sampun kula cathet 🙏 Mangke kula engetaken. Menawi sanes janji, mangga ketik "bukan".`],
+    netral: [(who) => `Sendika ${who}, sampun kula cathet. Mangke kula engetaken. Menawi sanes janji, mangga ketik "bukan".`],
   },
 };
 

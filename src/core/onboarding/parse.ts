@@ -19,6 +19,14 @@ export function parseMajors(text: string): string[] {
   return [...new Set(parts)];
 }
 
+/** Singkatan jurusan SMK/SMA yang dikenal — untuk menebak jurusan dari nama kelas ("XI RPL 1" → RPL). */
+const KNOWN_MAJORS = ['RPL', 'PPLG', 'TKJ', 'TJKT', 'SIJA', 'PG', 'DKV', 'ANIMASI', 'MM', 'AKL', 'OTKP', 'MPLB', 'BDP', 'PM', 'TKR', 'TSM', 'TITL', 'TAV', 'TEI', 'TP', 'IPA', 'IPS', 'MIPA'];
+
+export function majorsInClassName(className: string): string[] {
+  const tokens = className.toUpperCase().split(/[^A-Z]+/);
+  return [...new Set(tokens.filter((t) => KNOWN_MAJORS.includes(t)))];
+}
+
 const NO_KAS = /^(?:(?:nggak|ngga|gak|ga|enggak|tidak|nope|belum)\b.*\b(?:ada|kas)\b|nggak|ngga|gak|ga|enggak|tidak|nope)\W*$/i;
 
 export function parseKas(text: string): { amount: number; period: KasPeriod } | 'none' | null {

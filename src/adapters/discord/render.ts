@@ -31,7 +31,8 @@ export function renderText(text: string): { text: string; users: string[] } {
   const users: string[] = [];
   const out = renderTokens(text, {
     user: (id) => {
-      users.push(id);
+      // Discord menolak seluruh pesan kalau allowed_mentions.users berisi ID ganda.
+      if (!users.includes(id)) users.push(id);
       return `<@${id}>`;
     },
     channel: (id) => `<#${id}>`,

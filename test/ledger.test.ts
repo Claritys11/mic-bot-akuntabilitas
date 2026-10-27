@@ -131,6 +131,21 @@ describe('verifikasi bukti transfer (realistis, bukan forensik)', () => {
     expect(verifyProof(p, { ...ctx, seenHashes: new Set(['h1']), seenPHashes: ['ffff0000ffff0000'] })).toEqual(['duplicate_image']);
   });
 
+  test('struk mirip dari aplikasi yang sama tapi ref berbeda → bukan duplikat (QA T14)', () => {
+    const p = { ...base, imagePHash: 'ffff0000ffff0000', refId: 'TRX2', penerima: 'SARI DEWI' };
+    const seen = { pHash: 'ffff0000ffff0003', refKey: 'trx1', nominal: 20000, tanggal: '2026-10-20', penerima: 'BUDI' };
+    expect(verifyProof(p, { ...ctx, seenImages: [seen] })).toEqual([]);
+  });
+  test('ref diedit di screenshot lama (gambar nyaris identik, data lain sama) → tetap ditandai', () => {
+    const p = { ...base, imagePHash: 'ffff0000ffff0000', refId: 'TRX2', penerima: 'SARI DEWI' };
+    const seen = { pHash: 'ffff0000ffff0001', refKey: 'trx1', nominal: 10000, tanggal: '2026-10-21', penerima: 'SARI DEWI' };
+    expect(verifyProof(p, { ...ctx, seenImages: [seen] })).toContain('similar_image');
+  });
+  test('ref tidak terbaca → kemiripan gambar tetap dipakai', () => {
+    const p = { ...base, refId: null, imagePHash: 'ffff0000ffff0000' };
+    expect(verifyProof(p, { ...ctx, seenImages: [{ pHash: 'ffff0000ffff0003', refKey: 'trx1', nominal: 1, tanggal: null, penerima: null }] })).toContain('similar_image');
+  });
+
   test('penerima dicek hanya kalau rekening kas sudah diatur', () => {
     const p = { ...base, penerima: 'BUDI SANTOSO' };
     expect(verifyProof(p, ctx)).toEqual([]);

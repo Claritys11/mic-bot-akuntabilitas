@@ -15,7 +15,7 @@ import {
   type SpeechLevel,
 } from '../types.ts';
 import { ensureReviewChannel } from '../kas/review.ts';
-import { parseClassName, parseKas, parseMajors } from './parse.ts';
+import { majorsInClassName, parseClassName, parseKas, parseMajors } from './parse.ts';
 
 // Setup kelas lewat wawancara santai, bukan slash command (prinsip "tidak menambah langkah").
 // Urutan: sapa → nama kelas → jurusan → gaya bahasa → channel → kas → bendahara → tempat cek bukti → selesai.
@@ -27,9 +27,16 @@ const deny = (text: string): Reply => ({ reply: { text, private: true } });
 
 const QUESTIONS: Record<Exclude<Step, 'greet'>, (o: OnboardingDoc, ops: PlatformOps) => { text: string; actions?: Action[] }> = {
   kelas: () => ({ text: 'Sip! Pertama dulu nih — ini kelas apa? Tulis aja namanya, misal **XI International** 😄' }),
-  jurusan: (o) => ({
-    text: `Oke, **${o.data?.className}** 👍 Jurusannya apa aja? Kalau campur, pisahin pakai koma ya (misal: RPL, TKJ, PG).`,
-  }),
+  jurusan: (o) => {
+    // Nama kelas sering sudah menyebut jurusan ("XI RPL 1") → tinggal klik (temuan QA T1).
+    const guess = majorsInClassName(o.data?.className ?? '');
+    return guess.length
+      ? {
+          text: `Oke, **${o.data?.className}** 👍 Jurusannya ${guess.join(', ')} ya? Kalau ada jurusan lain juga, tulis aja (misal: RPL, TKJ, PG).`,
+          actions: [{ id: 'ob:jur:yes', label: `✅ Iya, ${guess.join(', ')}`, kind: 'primary' }],
+        }
+      : { text: `Oke, **${o.data?.className}** 👍 Jurusannya apa aja? Kalau campur, pisahin pakai koma ya (misal: RPL, TKJ, PG).` };
+  },
   tutur: () => ({
     text:
       'Kalau aku lagi ngingetin atau nagih, enaknya gaya ngomongku gimana?\n' +
@@ -174,7 +181,14 @@ export async function handleOnboardingAction(ev: ActionEvent, ops: PlatformOps):
 
   if (verb === 'start' && o.step === 'greet') {
     const next = await advance(o._id, 'kelas', { interviewerId: ev.actor.platformUserId });
-    return { update: { text: `${mention(ev.actor)} siap ngatur kelas ini 🙌`, actions: [] }, messages: [ask(next, 'kelas', ops)] };
+    // Sapaan tetap terlihat (hanya tombolnya hilang) — temuan QA T2.
+    return { update: { actions: [] }, messages: [say(o.channelId, `${mention(ev.actor)} siap ngatur kelas ini 🙌`), ask(next, 'kelas', ops)] };
+  }
+  if (verb === 'jur' && arg === 'yes' && o.step === 'jurusan') {
+    const majors = majorsInClassName(o.data?.className ?? '');
+    if (!majors.length) return deny('Tulis jurusannya ya 🙏');
+    const next = await advance(o._id, 'tutur', { 'data.majors': majors });
+    return { update: done(`Jurusan: ${majors.join(', ')}`), messages: [ask(next, 'tutur', ops)] };
   }
   if (verb === 'tutur' && o.step === 'tutur' && (arg === 'santai' || arg === 'sopan' || arg === 'krama')) {
     const next = await advance(o._id, 'channel', { 'data.speechLevel': arg });
@@ -221,7 +235,7 @@ export async function handleOnboardingAction(ev: ActionEvent, ops: PlatformOps):
     const note = !ch
       ? 'Waduh, aku nggak bisa bikin channel (izin Manage Channels belum ada) 😢 Sementara bukti dicek lewat DM bendahara ya.'
       : ch.created
-        ? `Udah aku buatin ${channelRef(ch.channelId)} 🔒 — cuma kamu & bendahara yang bisa lihat (admin server juga). Tambah pengurus lain lewat pengaturan channel.`
+        ? `Udah aku buatin ${channelRef(ch.channelId)} 🔒 — cuma ${o.data?.treasurerId && o.data.treasurerId !== ev.actor.platformUserId ? 'kamu & bendahara' : 'kamu (bendahara)'} & admin server yang bisa lihat. Tambah pengurus lain: \`/kas atur tambah_tim:@nama\`.`
         : `Aku pakai ${channelRef(ch.channelId)} yang sudah ada${ch.private ? ' 🔒' : ' — tapi channel ini kelihatan semua anggota, jadi yang bisa menyetujui tetap cuma bendahara & admin'}.`;
     return { update: done(ch ? 'Channel tim inti siap' : 'Lewat DM bendahara'), messages: [say(o.channelId, note), ...(await finish(next, ops))] };
   }
@@ -246,6 +260,7 @@ async function finish(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessa
         'kas.amount': d.kasAmount ?? 0,
         'kas.period': (d.kasPeriod ?? 'bulanan') as KasPeriod,
         'kas.treasurerId': d.treasurerId ?? null,
+        'kas.setAt': now(),
         'kas.reviewChannelId': d.reviewChannelId ?? null,
         'kas.reviewChannelPrivate': d.reviewChannelPrivate ?? false,
         // Setup (ulang) = mulai bersih; pewawancara adalah admin, sudah berhak lewat isAdmin.

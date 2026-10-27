@@ -46,7 +46,7 @@ function oppCard(o: OpportunityDoc): Card {
     ? 'Draf hasil baca otomatis — cek dulu, lalu pengurus klik "Simpan" supaya tampil untuk kelas.'
     : o.sponsored
       ? 'Promosi — konten berbayar dari penyelenggara.'
-      : `${auto ? `Dibaca otomatis dari ${new URL(o.link).hostname.replace(/^www\./, '')} — cek ulang di link resmi. ` : ''}Klik "Bentuk tim" untuk membuat thread & janji awal.`;
+      : `${auto ? `Dibaca otomatis dari ${new URL(o.link).hostname.replace(/^www\./, '')} — cek ulang di link resmi.` : ''}${o.kind === 'beasiswa' ? '' : ' Klik "Bentuk tim" untuk membuat thread & janji awal.'}`.trim();
   return {
     title: `${o.sponsored ? '[Promosi] ' : ''}${o.kind === 'beasiswa' ? '🎓' : '🏆'} ${o.title.replace(DRAFT_PREFIX, '')}`,
     tone: o.draft ? 'warn' : o.sponsored ? 'warn' : 'info',
@@ -81,7 +81,11 @@ export async function handleOppLink(llm: LLMProvider, reader: PageReader | undef
   recentImports.set(group.groupId, [...recent, t]);
   const r = await importLinkAsDraft(llm, reader, { url, groupId: group.groupId, addedBy: msg.author.platformUserId, now: now() });
   if (!r.ok) return [{ to, text: `Makasih infonya 🙏 tapi aku belum bisa ambil datanya: ${r.reason}. Pengurus bisa tambah manual pakai \`/lomba tambah\`.` }];
-  if (r.duplicate) return [{ to, text: `Lomba ini sudah ada di catatanku 👍`, card: oppCard(r.doc) }];
+  if (r.duplicate) {
+    const word = r.doc.kind === 'beasiswa' ? 'Beasiswa' : 'Lomba';
+    const team = r.doc.kind === 'beasiswa' ? [] : [{ id: teamId(String(r.doc._id)), label: '👥 Bentuk tim', kind: 'primary' as const }];
+    return [{ to, text: `${word} ini sudah ada di catatanku 👍`, card: oppCard(r.doc), actions: team }];
+  }
   return [{ to, text: `Makasih ${mention(msg.author)}! Ini yang kebaca dari linknya 👇 Pengurus, cek dulu lalu simpan ya.`, card: oppCard(r.doc), actions: draftActions(String(r.doc._id)) }];
 }
 

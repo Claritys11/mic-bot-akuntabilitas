@@ -2,6 +2,7 @@ import type { LLMProvider } from '../llm/provider.ts';
 import { collectPromiseReminders } from './billing/service.ts';
 import { answerQuestion } from './chat/ask.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
+import { collectUndeliveredProofs } from './kas/service.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
 import type { PageReader } from './opps/importer.ts';
@@ -187,7 +188,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     },
 
     async tick(at = now()) {
-      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectNudges(at), collectFollowUps(at), collectWeeklyDigests(at)]);
+      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectUndeliveredProofs(at), collectNudges(at), collectFollowUps(at), collectWeeklyDigests(at)]);
       const out: OutgoingMessage[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') out.push(...r.value);

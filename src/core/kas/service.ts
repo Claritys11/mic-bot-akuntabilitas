@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { isValidObjectId } from 'mongoose';
+import { isValidObjectId, type InferSchemaType, type Types } from 'mongoose';
 import { z } from 'zod';
-import { GroupModel, KasProofModel, KasReminderModel, TransactionModel, type GroupDoc } from '../../db/models.ts';
+import { GroupModel, KasProofModel, KasReminderModel, MemberModel, TransactionModel, type GroupDoc } from '../../db/models.ts';
 import { kasProofPrompt } from '../../llm/prompts/kasProof.ts';
 import { visionJson, type LLMProvider } from '../../llm/provider.ts';
 import { kasText, PRIVATE_FALLBACK, type KasStage } from '../billing/templates.ts';
@@ -82,7 +82,7 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     mimeType: image.contentType ?? 'image/jpeg',
   });
 
-  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1, refHash: 1 }).lean();
+  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1, refHash: 1, nominal: 1, transferDate: 1, recipient: 1 }).lean();
   const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
   const clean = (v: string | null | undefined) => (v ? sanitize(v).slice(0, 100) : null);
   const proof = {
@@ -99,7 +99,9 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     amount: group.kas?.amount ?? 0,
     period: kasPeriod,
     seenHashes: new Set(previous.map((p) => p.imageHash)),
-    seenPHashes: previous.map((p) => p.imagePHash).filter((h): h is string => Boolean(h)),
+    seenImages: previous
+      .filter((p) => p.imagePHash)
+      .map((p) => ({ pHash: p.imagePHash!, refKey: p.refHash ?? (p.refId ? refHashOf(p.refId) : null), nominal: p.nominal ?? null, tanggal: p.transferDate ?? null, penerima: p.recipient ?? null })),
     recipients: group.kas?.recipients ?? [],
     seenRefIds: new Set(previous.map((p) => p.refHash ?? (p.refId ? refHashOf(p.refId) : null)).filter((h): h is string => Boolean(h))),
     refKey: refHashOf,
@@ -123,60 +125,106 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     flags,
     period: periodKey(transferAt > at ? at : transferAt, kasPeriod),
   });
-  const id = String(doc._id);
+  return deliverProof(doc.toObject() as KasProofDoc, group, { replyTo: msg.id, isDirect: Boolean(msg.isDirect), sender: msg.author, readerOn: llm.enabled });
+}
 
-  const card: Card = {
+type KasProofDoc = InferSchemaType<typeof KasProofModel.schema> & { _id: Types.ObjectId };
+
+function proofCard(p: KasProofDoc, readerOn: boolean): Card {
+  const flags = p.flags as ProofFlag[];
+  return {
     title: flags.length ? '🧾 Bukti transfer — perlu dicek' : '🧾 Bukti transfer diterima',
     tone: flags.length ? 'warn' : 'info',
     fields: [
-      { name: 'Dari', value: mention(msg.author), inline: true },
-      { name: 'Nominal', value: proof.nominal ? rupiah(proof.nominal) : '—', inline: true },
-      { name: 'Tanggal', value: proof.tanggal ?? '—', inline: true },
-      { name: 'Bank/e-wallet', value: clean(extracted?.bank) ?? '—', inline: true },
-      { name: 'Ke', value: proof.penerima ?? '—', inline: true },
-      { name: 'Ref', value: proof.refId ?? '—', inline: true },
-      { name: 'Periode', value: periodLabel(doc.period), inline: true },
+      { name: 'Dari', value: mention(p.member), inline: true },
+      { name: 'Nominal', value: p.nominal ? rupiah(p.nominal) : '—', inline: true },
+      { name: 'Tanggal', value: p.transferDate ?? '—', inline: true },
+      { name: 'Bank/e-wallet', value: p.bank ?? '—', inline: true },
+      { name: 'Ke', value: p.recipient ?? '—', inline: true },
+      { name: 'Ref', value: p.refId ?? '—', inline: true },
+      { name: 'Periode', value: periodLabel(p.period), inline: true },
     ],
     description: flags.length
-      ? flags.map((f) => `⚠️ ${FLAG_TEXT[f as ProofFlag]}`).join('\n')
-      : llm.enabled
+      ? flags.map((f) => `⚠️ ${FLAG_TEXT[f]}`).join('\n')
+      : readerOn
         ? 'Tidak ada kejanggalan yang terdeteksi. Menunggu persetujuan bendahara.'
         : 'Pembaca gambar (LLM vision) belum aktif — bendahara mohon cek manual.',
     footer: 'Bot hanya mencatat & memeriksa kejanggalan umum, bukan forensik. Uang tetap lewat bank/e-wallet.',
   };
-  const treasurer = group.kas?.treasurerId ? ` ${mention({ platformUserId: group.kas.treasurerId })}` : '';
-  const reviewActions = [
+}
+
+/** Kartu bukti untuk bendahara/tim inti — tujuan sesuai pengaturan kas. Juga dipakai untuk kirim ulang. */
+function reviewMessage(p: KasProofDoc, group: GroupDoc, readerOn: boolean, viaDm: boolean): OutgoingMessage {
+  const id = String(p._id);
+  const author = { platformUserId: p.member.platformUserId };
+  // Bendahara disebut sekali saja (kalau pengirim = bendahara, tidak perlu dua kali — temuan QA T15).
+  const treasurer = group.kas?.treasurerId && group.kas.treasurerId !== author.platformUserId ? ` ${mention({ platformUserId: group.kas.treasurerId })}` : '';
+  const actions = [
     { id: ids.approve(id), label: '✅ Setujui', kind: 'success' as const },
     { id: ids.reject(id), label: '❌ Tolak', kind: 'danger' as const },
   ];
-  if (group.kas?.reviewChannelId) {
-    // Bendahara = channel tim inti: detail bukti & tombol hanya di sana; di tempat pengirim cukup ucapan terima kasih.
-    return [
-      { to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: `Makasih ${mention(msg.author)} 🙏 Buktinya udah aku terusin ke bendahara buat dicek.` },
-      { to: { kind: 'channel', channelId: group.kas.reviewChannelId }, text: `Ada bukti kas baru dari ${mention(msg.author)} 🧾${treasurer}`, card, actions: reviewActions },
-    ];
-  }
-  if (msg.isDirect) {
-    // Dikirim lewat chat pribadi → tombol ke bendahara (DM), bukan ke pengirim; cadangan: grup.
-    const fallbackChannelId = group.kasChannelId ?? group.mainChannelId;
-    const review: OutgoingMessage = group.kas?.treasurerId
-      ? {
-          to: { kind: 'dm', member: { platform: msg.platform, groupId: msg.groupId, platformUserId: group.kas.treasurerId, displayName: 'Bendahara' }, fallbackChannelId },
-          text: `Ada bukti kas baru dari ${mention(msg.author)} 🧾`,
-          card,
-          actions: reviewActions,
-        }
-      : { to: { kind: 'channel', channelId: fallbackChannelId }, text: `Ada bukti kas baru dari ${mention(msg.author)} 🧾`, card, actions: reviewActions };
-    return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: 'Makasih 🙏 Buktinya udah aku terusin ke bendahara buat dicek.' }, review];
-  }
-  return [
-    {
-      to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
-      text: `Terima kasih ${mention(msg.author)} 🙏 Bukti dicatat, menunggu cek bendahara.${treasurer}`,
+  const text = `Ada bukti kas baru dari ${mention(author)} 🧾${treasurer}`;
+  const afterSend = async () => void (await KasProofModel.updateOne({ _id: p._id }, { $set: { reviewSentAt: now() } }));
+  const card = proofCard(p, readerOn);
+  if (group.kas?.reviewChannelId) return { to: { kind: 'channel', channelId: group.kas.reviewChannelId }, text, card, actions, afterSend };
+  const fallbackChannelId = group.kasChannelId ?? group.mainChannelId;
+  if (viaDm && group.kas?.treasurerId) {
+    return {
+      to: { kind: 'dm', member: { platform: p.platform as Platform, groupId: p.groupId, platformUserId: group.kas.treasurerId, displayName: 'Bendahara' }, fallbackChannelId },
+      text,
       card,
-      actions: reviewActions,
+      actions,
+      afterSend,
+    };
+  }
+  return { to: { kind: 'channel', channelId: viaDm ? fallbackChannelId : p.channelId }, text, card, actions, afterSend };
+}
+
+function deliverProof(p: KasProofDoc, group: GroupDoc, ctx: { replyTo: string; isDirect: boolean; sender: { platformUserId: string }; readerOn: boolean }): OutgoingMessage[] {
+  const review = reviewMessage(p, group, ctx.readerOn, ctx.isDirect);
+  const here = { kind: 'channel' as const, channelId: p.channelId, replyTo: ctx.replyTo };
+  const sameChannel = review.to.kind === 'channel' && review.to.channelId === p.channelId;
+  if (sameChannel) {
+    // Kartu langsung di channel kas (tidak ada channel tim inti): kartu itu sendiri sudah jadi tanda terima.
+    return [{ ...review, to: here, text: `Terima kasih ${mention(ctx.sender)} 🙏 Bukti dicatat, menunggu cek bendahara.${review.text!.slice(review.text!.indexOf('🧾') + 2)}` }];
+  }
+  // Kartu dikirim DULU; ucapan "udah aku terusin" hanya kalau kartunya benar-benar sampai.
+  return [
+    review,
+    {
+      to: here,
+      text: `Makasih ${mention(ctx.sender)} 🙏 Buktinya udah aku terusin ke bendahara buat dicek.`,
+      onlyIfPreviousSent: true,
+      elseText: `Makasih ${mention(ctx.sender)} 🙏 Buktinya sudah kucatat, tapi belum bisa kuteruskan ke bendahara — nanti aku coba kirim ulang otomatis.`,
     },
   ];
+}
+
+/** Scheduler: kartu bukti yang belum sampai ke bendahara (mis. sempat gagal kirim) dikirim ulang, maks 5x. */
+export async function collectUndeliveredProofs(at: Date): Promise<OutgoingMessage[]> {
+  const rows = await KasProofModel.find({
+    status: 'pending',
+    reviewSentAt: null,
+    // $not juga cocok dengan dokumen lama yang belum punya field ini.
+    reviewAttempts: { $not: { $gte: 5 } },
+    lastAttemptAt: { $not: { $gt: new Date(at.getTime() - 2 * 60_000) } },
+  })
+    .limit(20)
+    .lean<KasProofDoc[]>();
+  const out: OutgoingMessage[] = [];
+  for (const p of rows) {
+    const g = await getGroup(p.platform as Platform, p.groupId);
+    if (!g || g.pilotMode === 'jeda') continue;
+    const claimed = await KasProofModel.findOneAndUpdate(
+      { _id: p._id, reviewSentAt: null, reviewAttempts: p.reviewAttempts ?? { $exists: false } },
+      { $inc: { reviewAttempts: 1 }, $set: { lastAttemptAt: at } },
+    );
+    if (!claimed) continue;
+    const viaDm = p.channelId !== g.kasChannelId && p.channelId !== g.mainChannelId;
+    const m = reviewMessage(p, g, true, viaDm);
+    out.push({ ...m, text: `${m.text} _(kirim ulang)_` });
+  }
+  return out;
 }
 
 /** Bukti dikirim lewat chat pribadi → kabari pengirimnya di chat itu juga (tombol ada di chat bendahara). */
@@ -270,7 +318,13 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
         },
         actions: [],
       },
-      messages: notifyPrivateSender(proof, group, ev, `Bukti transfer kasmu belum bisa dicatat 🙏 Coba hubungi ${mention(ev.actor)} ya.`),
+      // Beri tahu alasannya (temuan QA T16) — catatan otomatis yang dilihat bendahara.
+      messages: notifyPrivateSender(
+        proof,
+        group,
+        ev,
+        `Bukti transfer kasmu belum bisa dicatat 🙏${proof.flags.length ? `\nCatatan: ${(proof.flags as ProofFlag[]).map((f) => FLAG_TEXT[f].toLowerCase()).join('; ')}.` : ''}\nKalau ada yang keliru, hubungi ${mention(ev.actor)} ya.`,
+      ),
     };
   }
   if (verb === 'ok') {
@@ -313,7 +367,19 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
       ? cmd.options.penerima.split(',').map((r) => r.trim().slice(0, 80)).filter(Boolean).slice(0, 5)
       : (group.kas?.recipients ?? []);
   // Set per field: jangan menghapus pengaturan kas lain yang tidak disebut.
-  await GroupModel.updateOne({ _id: group._id }, { $set: { 'kas.amount': amount, 'kas.period': period, 'kas.treasurerId': treasurerId, 'kas.recipients': recipients } });
+  await GroupModel.updateOne(
+    { _id: group._id },
+    {
+      $set: {
+        'kas.amount': amount,
+        'kas.period': period,
+        'kas.treasurerId': treasurerId,
+        'kas.recipients': recipients,
+        // Nominal/periode berubah = mulai lagi masa tenggang sebelum pengingat otomatis.
+        ...(amount !== group.kas?.amount || period !== group.kas?.period ? { 'kas.setAt': now() } : {}),
+      },
+    },
+  );
 
   // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
   let reviewNote: string | null = null;
@@ -449,9 +515,20 @@ export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> 
     const period = periodKey(at, kasPeriod);
     const stage = kasStageDue(period, at);
     if (!stage) continue;
+    // Baru diatur → beri waktu dulu (setengah periode, maks 7 hari), jangan langsung menagih (temuan QA).
+    const { start, end } = periodRange(period);
+    const grace = Math.min(7 * 86400_000, (end.getTime() - start.getTime()) / 2);
+    const since = g.kas?.setAt ?? (g as { createdAt?: Date }).createdAt;
+    if (since && at.getTime() - new Date(since).getTime() < grace) continue;
     const [members, entries] = await Promise.all([listMembers(g.platform as Platform, g.groupId), ledgerEntries(g.groupId)]);
     const { unpaid } = paidStatus(members.map((m) => ({ id: m.platformUserId, name: m.displayName })), entries, g.kas!.amount!, period);
+    // Anggota yang baru bergabung juga diberi masa tenggang yang sama.
+    const joined = new Map(
+      (await MemberModel.find({ platform: g.platform, groupId: g.groupId }, { platformUserId: 1, createdAt: 1 }).lean()).map((m) => [m.platformUserId, (m as { createdAt?: Date }).createdAt]),
+    );
     for (const u of unpaid) {
+      const joinedAt = joined.get(u.id);
+      if (joinedAt && at.getTime() - new Date(joinedAt).getTime() < grace) continue;
       try {
         await KasReminderModel.create({ groupId: g.groupId, period, memberId: u.id, stage });
       } catch {
