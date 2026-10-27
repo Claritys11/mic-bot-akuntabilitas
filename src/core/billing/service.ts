@@ -30,9 +30,12 @@ export async function collectPromiseReminders(at: Date): Promise<OutgoingMessage
 
   const groups = await GroupModel.find({ groupId: { $in: [...new Set(candidates.map((c) => c.groupId))] } }).lean<GroupDoc[]>();
   const levelOf = new Map(groups.map((g) => [`${g.platform}:${g.groupId}`, g.speechLevel as SpeechLevel]));
+  const paused = new Set(groups.filter((g) => g.pilotMode === 'jeda').map((g) => `${g.platform}:${g.groupId}`));
 
   const out: OutgoingMessage[] = [];
   for (const p of candidates) {
+    // Dijeda: jangan klaim tahap — begitu jeda dibuka, hanya tahap terbaru yang dikirim (bukan beruntun).
+    if (paused.has(`${p.platform}:${p.groupId}`)) continue;
     const stage = nextStage(p.deadline!, p.stage as Stage | 'none', at);
     if (!stage) continue;
     const set: Record<string, unknown> = { stage };

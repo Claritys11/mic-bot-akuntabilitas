@@ -226,5 +226,24 @@ console.log(exp.reply?.file?.content.split('\n').filter((l) => l.includes('rangk
 step('/pilot mode aktif');
 printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.mode', options: { mode: 'aktif' } }));
 
+step('/pilot mode jeda (rem darurat) → bot berhenti total');
+printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.mode', options: { mode: 'jeda' } }));
+const paused = await core.onMessage({ ...say(ani, '@MIC ada tugas gak nih?'), mentionsBot: true });
+console.log(paused.length ? '  ❌ bot membalas saat jeda!' : '  (jeda ✓ — tidak membalas)');
+const pausedTick = await core.tick();
+console.log(pausedTick.some((m) => 'channelId' in m.to && m.to.channelId === CH) ? '  ❌ ada pesan terjadwal saat jeda' : '  (tidak ada tagihan/posting ke grup saat jeda ✓)');
+printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.mode', options: { mode: 'aktif' } }));
+
+step('Sari: /data hapus-saya → konfirmasi → hapus');
+const del = await core.onCommand({ ...ctx(sari), name: 'data.hapus-saya', options: {} });
+printReply(del);
+step('Budi coba menekan tombol hapus milik Sari (harus ditolak)');
+printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(del.reply, 'hapus permanen'), messageId: 'bot6' }));
+step('Sari menekan 🗑️ Ya, hapus permanen');
+printReply(await core.onAction({ ...ctx(sari), actionId: actionOf(del.reply, 'hapus permanen'), messageId: 'bot6' }));
+const left = await mongoose.connection.collection('promises').countDocuments({ 'owner.platformUserId': sari.platformUserId });
+const members = await mongoose.connection.collection('members').countDocuments({ platformUserId: sari.platformUserId });
+console.log(left || members ? `  ❌ masih ada ${left} janji / ${members} data anggota Sari` : '  (janji & data anggota Sari terhapus ✓)');
+
 console.log(`\nLLM usage: ${JSON.stringify(llm.usage())}`);
 await mongoose.disconnect();

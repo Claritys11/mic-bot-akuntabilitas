@@ -73,10 +73,19 @@ export const COMMANDS: CommandSpec[] = [
     subcommands: [
       {
         name: 'mode',
-        description: 'diam = hanya mencatat janji (baseline), aktif = normal',
-        options: [{ name: 'mode', description: 'Mode bot', type: 'string', required: true, choices: [{ name: 'diam (baseline)', value: 'diam' }, { name: 'aktif', value: 'aktif' }] }],
+        description: 'diam = hanya mencatat (baseline), aktif = normal, jeda = berhenti total',
+        options: [{ name: 'mode', description: 'Mode bot', type: 'string', required: true, choices: [{ name: 'diam (baseline)', value: 'diam' }, { name: 'aktif', value: 'aktif' }, { name: 'jeda (rem darurat)', value: 'jeda' }] }],
       },
       { name: 'ekspor', description: 'Ekspor janji tercatat (CSV) untuk dicek ketua kelas' },
+    ],
+  },
+  {
+    name: 'data',
+    description: 'Hapus data (hak menarik persetujuan)',
+    subcommands: [
+      { name: 'hapus-saya', description: 'Hapus permanen datamu di kelas ini' },
+      { name: 'hapus-anggota', description: 'Hapus data seorang anggota (pengurus)', options: [{ name: 'anggota', description: 'Anggota', type: 'user', required: true }] },
+      { name: 'hapus-kelas', description: 'Hapus SEMUA data kelas ini (pengurus)' },
     ],
   },
   {

@@ -377,7 +377,7 @@ function kasStageDue(period: string, at: Date): KasStage | null {
 }
 
 export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> {
-  const groups = await GroupModel.find({ 'kas.amount': { $gt: 0 }, pilotMode: { $ne: 'diam' } }).lean<GroupDoc[]>();
+  const groups = await GroupModel.find({ 'kas.amount': { $gt: 0 }, pilotMode: { $nin: ['diam', 'jeda'] } }).lean<GroupDoc[]>();
   const out: OutgoingMessage[] = [];
   for (const g of groups) {
     const kasPeriod = g.kas!.period as KasPeriod;

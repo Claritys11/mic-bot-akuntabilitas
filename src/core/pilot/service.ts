@@ -11,17 +11,15 @@ export async function pilotMode(cmd: CommandInvocation): Promise<Reply> {
   if (!cmd.isAdmin) return { reply: { text: 'Hanya pengurus kelas yang bisa mengubah mode pilot.', private: true } };
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
-  const mode = cmd.options.mode === 'diam' ? 'diam' : 'off';
+  const mode = cmd.options.mode === 'diam' ? 'diam' : cmd.options.mode === 'jeda' ? 'jeda' : 'off';
   await GroupModel.updateOne({ _id: group._id }, { $set: { pilotMode: mode } });
-  return {
-    reply: {
-      private: true,
-      text:
-        mode === 'diam'
-          ? '🤫 Mode diam aktif: aku hanya mencatat janji di obrolan, tanpa membalas, menagih, atau mengirim pengingat kas/lomba. Janji yang tercatat bisa diekspor dengan `/pilot ekspor`.'
-          : '🔔 Mode aktif: aku kembali membalas & menagih seperti biasa. Janji dari masa diam tetap tidak ditagih (biar baseline bersih).',
-    },
-  };
+  const text = {
+    diam: '🤫 Mode diam aktif: aku hanya mencatat janji di obrolan, tanpa membalas, menagih, atau mengirim pengingat kas/lomba. Janji yang tercatat bisa diekspor dengan `/pilot ekspor`.',
+    jeda: '⏸️ Bot dijeda di kelas ini: aku tidak membaca, mencatat, membalas, atau menagih apa pun sampai `/pilot mode aktif`. Pengingat yang terlewat selama jeda tidak dikirim beruntun.',
+    off: '🔔 Mode aktif: aku kembali membalas & menagih seperti biasa. Janji dari masa diam tetap tidak ditagih (biar baseline bersih).',
+  }[mode];
+  console.log(`[pilot] ${group.className}: mode ${mode} oleh ${cmd.actor.displayName}`);
+  return { reply: { private: true, text } };
 }
 
 type CsvRow = Pick<PromiseDoc, 'task' | 'owner' | 'deadline' | 'status' | 'doneAt' | 'shadow' | 'autoActivated'> & { createdAt?: Date };

@@ -8,6 +8,7 @@ import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { pilotEkspor, pilotMode } from './pilot/service.ts';
+import { dataHapusAnggota, dataHapusKelas, dataHapusSaya, handleDataAction } from './privacy/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
 import { channelRef, sanitize, type ActionEvent, type Member, type OptionValue, type CommandInvocation, type FormSubmit, type IncomingMessage, type JoinEvent, type OutgoingMessage, type Platform, type PlatformOps, type Reply, type SpeechLevel } from './types.ts';
@@ -84,6 +85,9 @@ export function createCore(llm: LLMProvider): Core {
     rangkum: (cmd) => rangkum(llm, cmd),
     'pilot.mode': pilotMode,
     'pilot.ekspor': pilotEkspor,
+    'data.hapus-saya': dataHapusSaya,
+    'data.hapus-anggota': dataHapusAnggota,
+    'data.hapus-kelas': dataHapusKelas,
     'lomba.list': lombaList,
     'lomba.tambah': lombaTambah,
   };
@@ -94,10 +98,12 @@ export function createCore(llm: LLMProvider): Core {
       const group = await getGroup(msg.platform, msg.groupId);
       if (msg.isDirect) {
         // Chat pribadi: tidak masuk buffer obrolan grup & tidak dideteksi sebagai janji (privasi).
-        if (!group) return [];
+        if (!group || group.pilotMode === 'jeda') return [];
         if (msg.attachments.length) return handleKasProof(llm, msg, group);
         return answerQuestion(llm, { ...msg, mentionsBot: true }, group);
       }
+      // Rem darurat: kelas yang dijeda tidak diproses sama sekali (perintah tetap jalan untuk membuka jeda).
+      if (group?.pilotMode === 'jeda') return [];
       const onboarding = await handleOnboardingMessage(msg, opsFor(msg.platform), Boolean(group));
       if (onboarding) return onboarding;
       if (!group) return [];
@@ -129,6 +135,7 @@ export function createCore(llm: LLMProvider): Core {
       if (prefix === 'k') return handleKasAction(ev);
       if (prefix === 'o') return handleOppAction(ev);
       if (prefix === 'ob') return handleOnboardingAction(ev, opsFor(ev.platform));
+      if (prefix === 'd') return handleDataAction(ev);
       return fail('Tombol ini sudah tidak berlaku.');
     },
 

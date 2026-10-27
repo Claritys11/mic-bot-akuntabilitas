@@ -17,7 +17,8 @@ const GroupSchema = new Schema(
     kasChannelId: { type: String, default: null },
     oppsChannelId: { type: String, default: null },
     // Pilot: 'diam' = bot hanya mencatat janji tanpa membalas/menagih (minggu baseline).
-    pilotMode: { type: String, enum: ['off', 'diam'], default: 'off' },
+    // 'jeda' = rem darurat: bot berhenti total di kelas ini (tidak mencatat, membalas, atau menagih).
+    pilotMode: { type: String, enum: ['off', 'diam', 'jeda'], default: 'off' },
     kas: {
       amount: { type: Number, default: 0 },
       period: { type: String, enum: ['mingguan', 'bulanan'], default: 'bulanan' },
