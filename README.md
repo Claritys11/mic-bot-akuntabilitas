@@ -13,8 +13,9 @@ Bot yang tinggal di grup kelas dan mengambil peran yang dihindari semua orang: *
 |---|---|
 | Fase 1 — MVP Discord (janji, tagihan, kas, rangkuman, info lomba) | ✅ prototipe jalan di server uji |
 | Bot terasa manusiawi (nimbrung, baca suasana, jawab "ada tugas?") | ✅ v0.2.0 |
-| M5 Siap demo · M6 Pilot di kelas | 🚧 berikutnya |
-| Fase 2 — Gampang diatur (panel `/pengaturan`, kas lengkap, lomba dari link/poster) | 📋 direncanakan (M7–M11) |
+| M6 Pilot di kelas (+ kelas kontrol) | 🚧 prioritas sekarang — [`docs/PILOT.md`](docs/PILOT.md) |
+| M5 Siap demo | 🚧 paralel dengan pilot |
+| Fase 2 — Gampang diatur (panel `/pengaturan`, kas lengkap, lomba dari link/poster) | ❄️ dibekukan sampai ada data pilot |
 | Adapter WhatsApp (Baileys) | 🧪 kode ada (`src/adapters/whatsapp`), belum tersambung live — nonaktif default; pengembangan sementara di Discord |
 
 Detail tiap milestone dan checklist-nya ada di [`PLAN.md`](PLAN.md) dan tab **Milestones / Issues** repo ini.
@@ -25,6 +26,7 @@ Detail tiap milestone dan checklist-nya ada di [`PLAN.md`](PLAN.md) dan tab **Mi
 |---|---|
 | [`PLAN.md`](PLAN.md) | Roadmap & milestone (sumber kebenaran apa yang sedang dikerjakan) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Alur pesan, folder, data, LLM, scheduler |
+| [`docs/PILOT.md`](docs/PILOT.md) | Rencana pilot, kelas kontrol, metrik, holdout deteksi janji |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Setup dev, alur branch/PR, gaya commit, aturan arsitektur |
 | [`SECURITY.md`](SECURITY.md) | Rahasia, privasi data, cara melapor celah |
 | [`CHANGELOG.md`](CHANGELOG.md) | Riwayat perubahan per versi |
@@ -39,7 +41,7 @@ Bun · TypeScript strict · discord.js v14 · MongoDB + Mongoose · zod · OpenR
 
 | Fitur | Cara pakai |
 |---|---|
-| Deteksi janji dari obrolan | ketik biasa: *"aku yang bikin PPT ya, Jumat jadi"* → tombol ✅ / ✏️ / ❌ |
+| Deteksi janji dari obrolan | ketik biasa: *"aku yang bikin PPT ya, Jumat jadi"* → janji jelas + ada deadline langsung dicatat (salah tangkap? balas *"bukan"*); kurang jelas → ditanya dulu ✅ / ✏️ / ❌ |
 | Tagihan bertahap | H-2 / H-1 / H-0 lewat DM (cadangan: channel), lewat deadline → diumumkan ke grup |
 | Tingkat tutur | `santai`, `sopan`, `krama` (Jawa), dipilih saat wawancara setup |
 | Janji & rapor | `/janji list`, `/janji selesai`, `/rapor-kelas` (skor di level kelas saja) |

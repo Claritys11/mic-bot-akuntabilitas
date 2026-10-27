@@ -5,8 +5,16 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Janji jelas (LLM yakin, pemilik sendiri, ada deadline) langsung aktif; salah tangkap → balas "bukan" / tombol "Bukan janjiku"; yang belum diakui tidak pernah diumumkan ke grup.
+- Rencana pilot (`docs/PILOT.md`) dan `bun run pilot:metrics` (ketepatan janji, telat, salah-aktif, kas).
+- Cek rekening penerima bukti kas (`/kas atur penerima:...`) dan perceptual hash untuk bukti yang di-screenshot ulang.
+- Mode tanpa simpan bukti: detail pribadi bukti kas dihapus setelah ditinjau; OpenRouter `data_collection=deny`.
 - Adapter WhatsApp eksperimental (Baileys), nonaktif default: balas angka, form balasan, perintah teks, bukti kas lewat chat pribadi ke bendahara.
 - Discord & WhatsApp bisa jalan bersamaan; pesan terjadwal dirutekan per platform.
+
+### Diubah
+- Deteksi janji mengenali slang & Jawa (sy yg, tak garapne, ku kerjain) dan menolak cerita lampau.
+- Prioritas: pilot (M6) sebelum Fase 2; Fase 2 dibekukan sampai ada data.
 
 ### Direncanakan
 - Fase 2 — pengaturan ramah pengguna: panel `/pengaturan`, peran pengurus, kas lengkap (tunai,

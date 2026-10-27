@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "simulate": "bun scripts/simulate.ts",
-    "eval:voice": "bun scripts/eval-voice.ts"
+    "eval:voice": "bun scripts/eval-voice.ts",
+    "pilot:metrics": "bun scripts/pilot-metrics.ts"
   },
   "engines": {
     "node": ">=18"

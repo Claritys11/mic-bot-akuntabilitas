@@ -60,9 +60,13 @@ Versi demo: kurasi, bukan scraper.
 - [ ] Skrip demo + server Discord demo yang rapi
 - [ ] README + diagram arsitektur (core/adapter → janji WA tinggal ganti adapter)
 
-## M6 — Pilot & validasi (Hari 12–13, sebagian bisa paralel sejak Hari 6)
-- [ ] Pasang di 1–2 kelas/tim lomba; catat: janji tercatat, janji ditepati, kas tercatat
-- [ ] Survei singkat + wawancara ketua/bendahara (lihat Rencana validasi di konsep)
+## M6 — Pilot & validasi ★ sekarang prioritas (lihat docs/PILOT.md)
+- [x] Rencana pilot + kelas kontrol + metrik (`docs/PILOT.md`, `bun run pilot:metrics`)
+- [x] Janji auto-aktif + pencatatan salah-aktif (`autoActivated`, `ownerTouched`)
+- [ ] Persetujuan wali murid & pilih kelas pilot/kontrol
+- [ ] Pasang di kelas pilot 2–3 minggu; kontrol dicatat manual
+- [ ] Holdout berlabel dari chat asli (anonim) → precision/recall deteksi janji
+- [ ] Survei singkat + wawancara 5–10 ketua/bendahara
 
 ## Tambahan di luar rencana awal (sudah jadi)
 - [x] Wawancara setup lewat obrolan, bot bisa bikin channel, kelas multi-jurusan
@@ -243,13 +247,15 @@ tunai 30rb → otomatis lunas 3 bulan. "keluar 25rb spidol" → laporan bulanan 
 
 ---
 
-## Urutan yang disarankan
+## Urutan sekarang (diperbarui 27 Okt 2026)
 
-1. **M5 (siap demo)** tetap dikerjakan dulu kalau tanggal lomba MIC dekat — stabilitas > fitur.
-2. **M7** → wajib sebelum M8–M11 (peran, skema, riwayat).
-3. **M8a + M8b** → kas paling sering dipakai dan riwayat tarif memperbaiki bug data.
-4. **M9a** → efek "wah" paling besar untuk demo (tempel link → kartu lomba jadi).
-5. M10, M8c, M9b–c, M11, lalu M6 (pilot) memakai versi ini.
+Setelah review: buktikan dulu bot ini berguna, baru tambah fitur.
+
+1. ✅ Perbaikan temuan review: deteksi janji lebih luas, cek rekening penerima, perceptual hash, mode tanpa simpan bukti.
+2. ✅ Janji jelas langsung aktif (auto-aktif) dengan pengaman — yang paling sering ingkar justru paling jarang klik ✅.
+3. **M6 Pilot naik ke depan** — rencana di [`docs/PILOT.md`](docs/PILOT.md), metrik: `bun run pilot:metrics`.
+4. **M5 Siap demo** dikerjakan paralel selama pilot berjalan.
+5. **Fase 2 (M7–M11) dibekukan** sampai ada data pilot. Kalau dikerjakan, urutannya tetap M7 → M8a/b → M9a.
 
 ## Keputusan yang masih terbuka (default yang diusulkan)
 
