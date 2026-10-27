@@ -5,6 +5,7 @@ import { chatJson, type LLMProvider } from '../../llm/provider.ts';
 import { listMembers } from '../groups.ts';
 import { paidStatus, periodKey, periodLabel, rupiah, type KasPeriod } from '../kas/ledger.ts';
 import { ledgerEntries, rateOf } from '../kas/service.ts';
+import { visibleTo } from '../opps/sources.ts';
 import { formatWIB, now } from '../time.ts';
 import { sanitize, type IncomingMessage, type OutgoingMessage, type SpeechLevel } from '../types.ts';
 import { asTranscript, recentChat } from './context.ts';
@@ -103,10 +104,9 @@ async function gatherFacts(msg: IncomingMessage, group: GroupDoc, topics: Topic[
   }
 
   if (topics.includes('lomba')) {
-    const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, msg.groupId] }, draft: { $ne: true } })
-      .sort({ deadline: 1 })
-      .limit(3)
-      .lean();
+    const opps = (await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, msg.groupId] }, draft: { $ne: true } }).sort({ deadline: 1 }).limit(30).lean())
+      .filter((o) => visibleTo(group, o))
+      .slice(0, 3);
     facts.lomba = opps.map((o) => ({ judul: o.title, penyelenggara: o.organizer, deadline: formatWIB(o.deadline, 'date') }));
   }
   return facts;

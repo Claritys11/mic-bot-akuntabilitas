@@ -1,4 +1,5 @@
 import { importFeeds, type PageReader } from '../core/opps/importer.ts';
+import { catalog, feedTargets } from '../core/opps/sources.ts';
 import { now } from '../core/time.ts';
 import { JobRunModel } from '../db/models.ts';
 import type { LLMProvider } from '../llm/provider.ts';
@@ -9,7 +10,7 @@ const JOB_ID = 'lomba-feeds';
 const EVERY_MS = 20 * 3600_000;
 
 export async function runFeedsOnce(llm: LLMProvider, reader: PageReader, feeds: string[]) {
-  const r = await importFeeds(llm, reader, feeds, now());
+  const r = await importFeeds(llm, reader, await feedTargets(catalog(feeds)), now());
   await JobRunModel.updateOne({ _id: JOB_ID }, { $set: { lastRunAt: new Date(), note: `${r.read} dibaca, ${r.added.length} ditambah` } }, { upsert: true });
   if (r.read) console.log(`[lomba] feed: ${r.read} item dibaca, ${r.added.length} lomba/beasiswa baru${r.added.length ? `: ${r.added.join('; ')}` : ''}`);
   return r;

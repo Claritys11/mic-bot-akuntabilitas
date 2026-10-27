@@ -318,7 +318,7 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
     proofId: proof._id,
     actorId: ev.actor.platformUserId,
   });
-  await audit(ev.groupId, ev.actor, 'kas.setujui', `${proof.member.displayName} ${rupiah(nominal)} (${entries.map((e) => periodLabel(e.period)).join(', ')})`);
+  await audit(ev.groupId, ev.actor, 'kas.setujui', `${proof.member.displayName} ${rupiah(nominal)} (${entries.map((e) => periodLabel(e.period)).join(', ')})`, proof.member.platformUserId);
 
   return {
     update: {
@@ -356,7 +356,7 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
   if (verb === 'no') {
     await KasProofModel.updateOne({ _id: id }, { $set: { status: 'rejected', reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } });
     await markKasDirty(ev.groupId);
-    await audit(ev.groupId, ev.actor, 'kas.tolak', `${proof.member.displayName}${proof.flags.length ? ` — ${proof.flags.join(', ')}` : ''}`);
+    await audit(ev.groupId, ev.actor, 'kas.tolak', `${proof.member.displayName}${proof.flags.length ? ` — ${proof.flags.join(', ')}` : ''}`, proof.member.platformUserId);
     return {
       update: {
         text: '',
@@ -449,7 +449,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
   );
 
   await markKasDirty(cmd.groupId);
-  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${changed ? ` mulai ${periodLabel(from)}` : ''}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${await memberName(cmd.platform, cmd.groupId, cmd.options.bendahara)}` : ''}`);
+  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${changed ? ` mulai ${periodLabel(from)}` : ''}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${await memberName(cmd.platform, cmd.groupId, cmd.options.bendahara)}` : ''}`, typeof cmd.options.bendahara === 'string' ? cmd.options.bendahara : null);
   // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
   let reviewNote: string | null = null;
   const wantChannel = cmd.options.cek_bukti === 'channel' || typeof cmd.options.channel_tim === 'string';
@@ -652,10 +652,10 @@ async function saveCash(ev: ActionEvent, group: GroupDoc, who: string, nominal: 
     groupId: ev.groupId,
     member,
     nominal,
-    note: `tunai, diterima ${ev.actor.displayName}`,
+    note: 'tunai', // penerima tercatat di createdBy & jejak audit — tanpa nama di buku kas
     actorId: ev.actor.platformUserId,
   });
-  await audit(ev.groupId, ev.actor, 'kas.tunai', `${member.displayName} ${rupiah(nominal)} (${allocationText(parts)})`);
+  await audit(ev.groupId, ev.actor, 'kas.tunai', `${member.displayName} ${rupiah(nominal)} (${allocationText(parts)})`, who);
   return {
     update: { text: `✅ Tunai ${rupiah(nominal)} dari ${mention({ platformUserId: who })} tercatat: ${allocationText(parts)}.`, card: undefined, actions: [] },
     messages: [
@@ -688,7 +688,7 @@ export async function kasArus(cmd: CommandInvocation, kind: 'pengeluaran' | 'pem
     amount: kind === 'pengeluaran' ? -nominal : nominal,
     kind,
     period: periodKey(at, (group.kas?.period ?? 'bulanan') as KasPeriod),
-    note: `dicatat ${cmd.actor.displayName}`,
+    note: '', // pencatat tercatat di createdBy & jejak audit
     createdBy: cmd.actor.platformUserId,
   });
   await markKasDirty(cmd.groupId);

@@ -41,7 +41,7 @@ if (config.googleServiceAccountFile) {
     console.error('[sheets] akun layanan Google tidak bisa dibaca:', (err as Error).message);
   }
 }
-const core = createCore(llm, { reader: webReader, sheets });
+const core = createCore(llm, { reader: webReader, sheets, lombaFeeds: config.lombaFeeds });
 const senders: Partial<Record<Platform, Sender>> = {};
 const stops: (() => Promise<void>)[] = [];
 

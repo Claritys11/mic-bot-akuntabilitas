@@ -254,7 +254,7 @@ step('Sinkron Google Sheet (isi tab yang akan ditulis)');
   const { GroupModel } = await import('../src/db/models.ts');
   await GroupModel.updateOne({ groupId: G }, { $set: { 'kas.sheetId': 'sheet-uji' } });
   const g = await GroupModel.findOne({ groupId: G }).lean();
-  const fake = { readMarker: async () => null, writeTabs: async (_id: string, tabs: { title: string; rows: unknown[][] }[]) => {
+  const fake = { readMarker: async () => null, publicAccess: async () => 'private', writeTabs: async (_id: string, tabs: { title: string; rows: unknown[][] }[]) => {
     for (const t of tabs) console.log(`  [${t.title}]\n${t.rows.slice(0, 6).map((r) => `    ${r.join(' | ')}`).join('\n')}`);
   } };
   await syncKasSheet(fake as never, g as never);

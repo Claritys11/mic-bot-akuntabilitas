@@ -57,7 +57,7 @@ export async function timTambah(cmd: CommandInvocation, ops: PlatformOps = {}): 
     const ok = await addReviewer(ops, cmd.platform, cmd.groupId, who, g.kas.reviewChannelId);
     note = ok ? ` Sudah bisa melihat ${channelRef(g.kas.reviewChannelId)}.` : ` Beri dia akses ${channelRef(g.kas.reviewChannelId)} lewat pengaturan channel ya.`;
   }
-  await audit(cmd.groupId, cmd.actor, 'tim.tambah', `${role}: ${await memberName(cmd.platform, cmd.groupId, who)}`);
+  await audit(cmd.groupId, cmd.actor, 'tim.tambah', `${role}: ${await memberName(cmd.platform, cmd.groupId, who)}`, who);
   if (role === 'bendahara') await markKasDirty(cmd.groupId);
   const fresh = (await getGroup(cmd.platform, cmd.groupId))!;
   return { reply: { text: `✅ ${mention({ platformUserId: who })} sekarang ${ROLE_LABEL[role]}.${note}`, card: teamCard(fresh) } };
@@ -83,7 +83,7 @@ export async function timHapus(cmd: CommandInvocation): Promise<Reply> {
   }
   await GroupModel.updateOne({ _id: g._id }, { $pull: Object.fromEntries(roles.map((r) => [`roles.${r}`, who])), ...(Object.keys(set).length ? { $set: set } : {}) });
   if (roles.includes('bendahara')) await removeReviewer(cmd.platform, cmd.groupId, who);
-  await audit(cmd.groupId, cmd.actor, 'tim.hapus', `${role ?? 'semua peran'}: ${await memberName(cmd.platform, cmd.groupId, who)}`);
+  await audit(cmd.groupId, cmd.actor, 'tim.hapus', `${role ?? 'semua peran'}: ${await memberName(cmd.platform, cmd.groupId, who)}`, who);
   const fresh = (await getGroup(cmd.platform, cmd.groupId))!;
   const lostChannel = roles.includes('bendahara') && g.kas?.reviewChannelId ? ` Cabut juga aksesnya ke ${channelRef(g.kas.reviewChannelId)} kalau perlu.` : '';
   return { reply: { text: `✅ ${mention({ platformUserId: who })} dicopot dari ${role ?? 'semua peran tim inti'}.${lostChannel}`, card: teamCard(fresh) } };

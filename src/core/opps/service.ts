@@ -4,11 +4,13 @@ import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { createPendingPromise } from '../promises/service.ts';
 import { DAY_MS, formatWIB, now, wibParts } from '../time.ts';
 import type { LLMProvider } from '../../llm/provider.ts';
-import { mention, type Action, type ActionEvent, type Card, type CommandInvocation, type IncomingMessage, type OutgoingMessage, type Reply } from '../types.ts';
-import { DRAFT_PREFIX, importLinkAsDraft, publishDraft, type PageReader } from './importer.ts';
+import { mention, sanitize, type Action, type ActionEvent, type Card, type CommandInvocation, type IncomingMessage, type OutgoingMessage, type Reply } from '../types.ts';
+import { DRAFT_PREFIX, importFeeds, importLinkAsDraft, importPosterAsDraft, publishDraft, type PageReader } from './importer.ts';
 import { inQuietHours } from '../quiet.ts';
+import { audit } from '../team/audit.ts';
 import { can } from '../team/roles.ts';
 import { pickNextOpportunity, relevance } from './relevance.ts';
+import { customSourceId, feedTargets, isEnabled, MAX_CUSTOM_SOURCES, visibleTo, type LombaSource } from './sources.ts';
 import { SEED_OPPORTUNITIES } from './seed.ts';
 
 const MAX_POSTS_PER_WEEK = 2;
@@ -72,15 +74,29 @@ const recentImports = new Map<string, number[]>();
 
 /** "@MIC ada lomba nih https://…" atau link lomba di channel info lomba → draf untuk disetujui pengurus. */
 export async function handleOppLink(llm: LLMProvider, reader: PageReader | undefined, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[] | null> {
-  if (!reader) return null;
+  const inOpps = msg.channelId === group.oppsChannelId;
+  const poster = msg.attachments.find((a) => (a.contentType ?? '').startsWith('image/') && (a.size ?? 0) <= 10 * 1024 * 1024);
   const url = msg.text.match(LINK_RE)?.[0]?.replace(/[).,!?]+$/, '');
-  if (!url || !OPP_WORDS.test(msg.text)) return null;
-  if (!msg.mentionsBot && msg.channelId !== group.oppsChannelId) return null;
+  // Poster / screenshot di #info-lomba, atau dikirim sambil tag aku + kata "lomba".
+  const wantsPoster = poster && !url && (inOpps || (msg.mentionsBot && OPP_WORDS.test(msg.text)));
+  if (!wantsPoster && (!reader || !url || !OPP_WORDS.test(msg.text) || (!msg.mentionsBot && !inOpps))) return null;
   const to = { kind: 'channel' as const, channelId: msg.channelId, replyTo: msg.id };
   const t = Date.now();
   const recent = (recentImports.get(group.groupId) ?? []).filter((x) => t - x < 3600_000);
-  if (recent.length >= LINK_IMPORTS_PER_HOUR) return [{ to, text: 'Aku udah baca banyak link sejam ini 😅 coba lagi nanti ya, atau pengurus bisa pakai `/lomba tambah`.' }];
+  if (recent.length >= LINK_IMPORTS_PER_HOUR) return [{ to, text: 'Aku udah baca banyak info sejam ini 😅 coba lagi nanti ya, atau pengurus bisa pakai `/lomba tambah`.' }];
   recentImports.set(group.groupId, [...recent, t]);
+  if (wantsPoster) {
+    const p = await importPosterAsDraft(llm, {
+      image: { data: await poster.getData(), mimeType: poster.contentType ?? 'image/jpeg' },
+      groupId: group.groupId,
+      addedBy: msg.author.platformUserId,
+      fallbackLink: msg.platform === 'discord' ? `https://discord.com/channels/${msg.groupId}/${msg.channelId}/${msg.id}` : 'poster di grup',
+      now: now(),
+    });
+    if (!p.ok) return inOpps && !msg.mentionsBot ? null : [{ to, text: `Makasih posternya 🙏 tapi aku belum bisa ambil datanya: ${p.reason}.` }];
+    return [{ to, text: `Makasih ${mention(msg.author)}! Ini yang kebaca dari posternya 👇 Pengurus, cek dulu lalu simpan ya.`, card: oppCard(p.doc), actions: draftActions(String(p.doc._id)) }];
+  }
+  if (!reader || !url) return null;
   const r = await importLinkAsDraft(llm, reader, { url, groupId: group.groupId, addedBy: msg.author.platformUserId, now: now() });
   if (!r.ok) return [{ to, text: `Makasih infonya 🙏 tapi aku belum bisa ambil datanya: ${r.reason}. Pengurus bisa tambah manual pakai \`/lomba tambah\`.` }];
   if (r.duplicate) {
@@ -101,7 +117,7 @@ export async function collectOppPosts(at: Date): Promise<OutgoingMessage[]> {
   const out: OutgoingMessage[] = [];
   for (const g of groups) {
     if (inQuietHours(at, g.quietHours)) continue;
-    const visible = opps.filter((o) => o.groupId == null || o.groupId === g.groupId);
+    const visible = opps.filter((o) => visibleTo(g, o));
     const posts = await OppPostModel.find({ groupId: g.groupId }).lean();
     const recent = posts.filter((p) => p.postedAt.getTime() > at.getTime() - 7 * DAY_MS).length;
     if (recent >= MAX_POSTS_PER_WEEK) continue;
@@ -127,8 +143,9 @@ export async function collectOppPosts(at: Date): Promise<OutgoingMessage[]> {
   return out;
 }
 
-export async function handleOppAction(ev: ActionEvent): Promise<Reply> {
+export async function handleOppAction(ev: ActionEvent, sources: LombaSource[] = []): Promise<Reply> {
   const [, verb, id] = ev.actionId.split(':');
+  if ((verb === 'src' || verb === 'srcdel') && id) return handleSourceAction(ev, verb, id, sources);
   if (!id || !isValidObjectId(id)) return { reply: { text: 'Info lomba tidak ditemukan.', private: true } };
   const o = await OpportunityModel.findById(id).lean<OpportunityDoc>();
   if (!o || (o.groupId != null && o.groupId !== ev.groupId)) return { reply: { text: 'Info lomba tidak ditemukan.', private: true } };
@@ -204,7 +221,9 @@ export async function lombaList(cmd: CommandInvocation): Promise<Reply> {
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   const at = now();
-  const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, cmd.groupId] }, draft: { $ne: true } }).lean<OpportunityDoc[]>();
+  const opps = (await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, cmd.groupId] }, draft: { $ne: true } }).lean<OpportunityDoc[]>()).filter((o) =>
+    visibleTo(group, o),
+  );
   // Yang ditambahkan kelas ini sendiri selalu tampil (dan paling atas), sisanya disaring relevansi jurusan.
   const ranked = opps
     .map((o) => ({ o, s: relevance(o.tags, group.major) + (o.groupId === cmd.groupId ? 100 : 0) }))
@@ -225,4 +244,95 @@ export async function lombaList(cmd: CommandInvocation): Promise<Reply> {
       },
     },
   };
+}
+
+// ---------- Sumber info lomba per kelas ----------
+
+const recentFetch = new Map<string, number>();
+
+function sourcesCard(g: GroupDoc, all: LombaSource[]): { card: Card; actions: Action[] } {
+  const custom = g.lombaSources?.custom ?? [];
+  const lines = all.map((s) => `${isEnabled(g, s.id) ? '✅' : '⬜'} **${s.name}** — ${s.desc}`);
+  for (const c of custom) lines.push(`🔗 **${c.name}** (khusus kelas ini) — ${c.url}`);
+  const actions: Action[] = [
+    ...all.map((s) => ({ id: `o:src:${s.id}`, label: `${isEnabled(g, s.id) ? 'Matikan' : 'Nyalakan'} ${s.name}`, kind: isEnabled(g, s.id) ? ('secondary' as const) : ('success' as const) })),
+    ...custom.map((c) => ({ id: `o:srcdel:${c.id}`, label: `🗑️ ${c.name}`.slice(0, 80), kind: 'danger' as const })),
+  ];
+  return {
+    card: {
+      title: '📡 Sumber info lomba kelas ini',
+      tone: 'info',
+      description: lines.join('\n'),
+      footer: `Aku ambil info baru ±sehari sekali, saring yang cocok untuk ${g.major}, lalu bagikan maks 2/minggu. Tambah sumber: /lomba sumber-tambah link:… · ambil sekarang: /lomba ambil`,
+    },
+    actions: actions.slice(0, 20),
+  };
+}
+
+export async function lombaSumber(cmd: CommandInvocation, all: LombaSource[]): Promise<Reply> {
+  const g = await getGroup(cmd.platform, cmd.groupId);
+  if (!g) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  const { card, actions } = sourcesCard(g, all);
+  return { reply: { card, actions: can(g, cmd, 'lomba') ? actions : [], private: true } };
+}
+
+/** Sumber custom: harus feed RSS/Atom yang terbaca (lewat pengambil halaman aman). Isinya hanya untuk kelas ini. */
+export async function lombaSumberTambah(cmd: CommandInvocation, reader: PageReader | undefined): Promise<Reply> {
+  const g = await getGroup(cmd.platform, cmd.groupId);
+  if (!g) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!can(g, cmd, 'lomba')) return { reply: { text: 'Yang bisa menambah sumber: ketua, sekretaris, atau admin.', private: true } };
+  if (!reader) return { reply: { text: 'Pengambil halaman web belum aktif di bot ini.', private: true } };
+  const url = String(cmd.options.link ?? '').trim();
+  if (!isHttpsUrl(url)) return { reply: { text: 'Link harus https://…', private: true } };
+  const custom = g.lombaSources?.custom ?? [];
+  if (custom.length >= MAX_CUSTOM_SOURCES) return { reply: { text: `Maksimal ${MAX_CUSTOM_SOURCES} sumber tambahan. Hapus salah satu dulu di /lomba sumber.`, private: true } };
+  const id = customSourceId(url);
+  if (custom.some((c) => c.id === id)) return { reply: { text: 'Sumber ini sudah ada.', private: true } };
+  let items;
+  try {
+    items = await reader.feed(url);
+  } catch (err) {
+    return { reply: { text: `Belum bisa dibaca: ${(err as Error).message}.`, private: true } };
+  }
+  if (!items.length) {
+    return { reply: { text: 'Link itu bukan feed RSS/Atom yang berisi info. Coba alamat feed-nya (biasanya …/feed atau …/rss). Untuk satu lomba saja, kirim linknya sambil tag aku.', private: true } };
+  }
+  const name = String(cmd.options.nama ?? '').trim().slice(0, 40) || new URL(url).hostname.replace(/^www\./, '');
+  await GroupModel.updateOne({ _id: g._id }, { $push: { 'lombaSources.custom': { id, name: sanitize(name), url, addedBy: cmd.actor.platformUserId } } });
+  await audit(cmd.groupId, cmd.actor, 'lomba.sumber', `tambah ${name}`);
+  return { reply: { text: `✅ Sumber **${sanitize(name)}** ditambahkan (${items.length} item terbaca). Info dari sini hanya untuk kelas ini. Ambil sekarang: /lomba ambil`, private: true } };
+}
+
+/** /lomba ambil — baca sumber kelas ini sekarang juga (maks sekali per 30 menit). */
+export async function lombaAmbil(cmd: CommandInvocation, llm: LLMProvider, reader: PageReader | undefined, all: LombaSource[]): Promise<Reply> {
+  const g = await getGroup(cmd.platform, cmd.groupId);
+  if (!g) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!can(g, cmd, 'lomba')) return { reply: { text: 'Yang bisa mengambil info sekarang: ketua, sekretaris, atau admin.', private: true } };
+  if (!reader || !llm.enabled) return { reply: { text: 'Pengambil info lomba belum aktif di bot ini.', private: true } };
+  const last = recentFetch.get(g.groupId) ?? 0;
+  if (Date.now() - last < 30 * 60_000) return { reply: { text: 'Baru saja diambil — coba lagi 30 menit lagi ya.', private: true } };
+  recentFetch.set(g.groupId, Date.now());
+  const targets = (await feedTargets(all, g.groupId)).filter((t) => t.groupId === g.groupId || isEnabled(g, t.sourceId));
+  const r = await importFeeds(llm, reader, targets, now());
+  const fresh = r.added.length ? `\n${r.added.map((t) => `• ${t}`).join('\n')}` : '';
+  return {
+    reply: {
+      text: `📡 ${r.read} info baru dibaca dari ${targets.length} sumber, ${r.added.length} lomba/beasiswa yang masih buka & cocok untuk SMA/SMK tersimpan.${fresh}\nLihat: /lomba list`,
+      private: true,
+    },
+  };
+}
+
+export async function handleSourceAction(ev: ActionEvent, verb: string, id: string, all: LombaSource[]): Promise<Reply> {
+  const g = await getGroup(ev.platform, ev.groupId);
+  if (!g || !can(g, ev, 'lomba')) return { reply: { text: 'Yang bisa mengatur sumber: ketua, sekretaris, atau admin.', private: true } };
+  if (verb === 'src' && all.some((s) => s.id === id)) {
+    await GroupModel.updateOne({ _id: g._id }, isEnabled(g, id) ? { $addToSet: { 'lombaSources.disabled': id } } : { $pull: { 'lombaSources.disabled': id } });
+  } else if (verb === 'srcdel') {
+    await GroupModel.updateOne({ _id: g._id }, { $pull: { 'lombaSources.custom': { id } } });
+    await audit(ev.groupId, ev.actor, 'lomba.sumber', `hapus ${id}`);
+  } else return { reply: { text: 'Sumber tidak dikenal.', private: true } };
+  const fresh = (await getGroup(ev.platform, ev.groupId))!;
+  const { card, actions } = sourcesCard(fresh, all);
+  return { update: { card, actions } };
 }

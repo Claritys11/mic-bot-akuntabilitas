@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { FeedItemModel, OpportunityModel, type OpportunityDoc } from '../../db/models.ts';
-import { OPP_TAGS, opportunityPrompt } from '../../llm/prompts/opportunity.ts';
-import { chatJson, type LLMProvider } from '../../llm/provider.ts';
+import { OPP_TAGS, opportunityImagePrompt, opportunityPrompt } from '../../llm/prompts/opportunity.ts';
+import { chatJson, visionJson, type LLMProvider } from '../../llm/provider.ts';
 import { formatWIB, fromWIB } from '../time.ts';
+import type { FeedTarget } from './sources.ts';
 import { sanitize } from '../types.ts';
 
 // Ambil data lomba/beasiswa dari halaman web: link yang ditempel pengurus/siswa, atau feed RSS harian.
@@ -77,6 +78,22 @@ export interface NormalizedOpp {
   link: string;
 }
 
+/** Poster → draf info lomba (pengurus tetap harus menyimpan). `fallbackLink` = tautan ke pesan poster. */
+export async function importPosterAsDraft(
+  llm: LLMProvider,
+  input: { image: { data: Uint8Array; mimeType: string }; groupId: string; addedBy: string; fallbackLink: string; now: Date },
+): Promise<{ ok: true; doc: OpportunityDoc } | { ok: false; reason: string }> {
+  if (!llm.enabled) return { ok: false, reason: 'pembaca AI belum aktif' };
+  const x = await visionJson(llm, Extracted.extend({ link: z.string().nullish() }), opportunityImagePrompt(formatWIB(input.now)), input.image);
+  if (!x) return { ok: false, reason: 'tulisan di gambar tidak terbaca' };
+  const n = normalizeExtraction(x, input.now);
+  if (!n.ok) return n;
+  const link = x.link && /^https:\/\/[^\s]+$/.test(x.link) ? x.link.slice(0, 300) : input.fallbackLink;
+  const tag = Math.random().toString(36).slice(2, 8);
+  const created = await OpportunityModel.create({ ...n.data, link, title: `[draf ${tag}] ${n.data.title}`.slice(0, 160), groupId: input.groupId, addedBy: input.addedBy, draft: true, source: 'poster', sponsored: false });
+  return { ok: true, doc: created.toObject() as OpportunityDoc };
+}
+
 export async function extractFromPage(llm: LLMProvider, page: { url: string; title: string; text: string }, now: Date) {
   if (!llm.enabled) return { ok: false as const, reason: 'pembaca AI belum aktif' };
   const x = await chatJson(llm, Extracted, opportunityPrompt({ url: page.url, title: page.title, text: page.text, todayWIB: formatWIB(now) }), { maxTokens: 500 });
@@ -142,19 +159,19 @@ export const FEED_ITEMS_PER_RUN = 5;
  * Baca feed RSS/Atom → halaman item baru → ekstrak → simpan sebagai info lomba global (semua kelas,
  * tetap disaring relevansi jurusan). Item yang sudah pernah dibaca dilewati.
  */
-export async function importFeeds(llm: LLMProvider, reader: PageReader, feeds: string[], now: Date): Promise<{ read: number; added: string[] }> {
+export async function importFeeds(llm: LLMProvider, reader: PageReader, targets: FeedTarget[], now: Date): Promise<{ read: number; added: string[] }> {
   const added: string[] = [];
   let read = 0;
-  for (const feedUrl of feeds) {
+  for (const t of targets) {
     let items;
     try {
-      items = await reader.feed(feedUrl);
+      items = await reader.feed(t.url);
     } catch (err) {
-      console.warn(`[lomba] feed ${feedUrl} gagal: ${(err as Error).message}`);
+      console.warn(`[lomba] feed ${t.url} gagal: ${(err as Error).message}`);
       continue;
     }
     const seen = new Set((await FeedItemModel.find({ url: { $in: items.map((i) => i.link) } }, { url: 1 }).lean()).map((s) => s.url));
-    const host = new URL(feedUrl).hostname.replace(/^www\./, '');
+    const host = new URL(t.url).hostname.replace(/^www\./, '');
     for (const item of items.filter((i) => !seen.has(i.link)).slice(0, FEED_ITEMS_PER_RUN)) {
       read++;
       let accepted = false;
@@ -162,10 +179,10 @@ export async function importFeeds(llm: LLMProvider, reader: PageReader, feeds: s
         const page = await reader.page(item.link);
         const r = await extractFromPage(llm, { ...page, text: `${item.summary}\n${page.text}`.slice(0, 12_000) }, now);
         // Data feed hanya MENAMBAH: lomba yang sudah ada (link/judul sama) tidak pernah ditimpa isi dari internet.
-        if (r.ok && !(await OpportunityModel.exists({ $or: [{ link: r.data.link }, { groupId: null, title: r.data.title }] }))) {
+        if (r.ok && !(await OpportunityModel.exists({ $or: [{ link: r.data.link }, { groupId: t.groupId, title: r.data.title }] }))) {
           const res = await OpportunityModel.updateOne(
-            { link: r.data.link, groupId: null },
-            { $setOnInsert: { ...r.data, groupId: null, addedBy: `feed:${host}`, source: `feed:${host}`, draft: false, sponsored: false } },
+            { link: r.data.link, groupId: t.groupId },
+            { $setOnInsert: { ...r.data, groupId: t.groupId, sourceId: t.sourceId, addedBy: `feed:${host}`, source: `feed:${host}`, draft: false, sponsored: false } },
             { upsert: true },
           ).catch(() => null); // bentrok judul unik → lewati
           if (res?.upsertedCount) {
@@ -176,7 +193,7 @@ export async function importFeeds(llm: LLMProvider, reader: PageReader, feeds: s
       } catch (err) {
         console.warn(`[lomba] item ${item.link} gagal: ${(err as Error).message}`);
       }
-      await FeedItemModel.updateOne({ url: item.link }, { $set: { feed: feedUrl, accepted, seenAt: now } }, { upsert: true });
+      await FeedItemModel.updateOne({ url: item.link }, { $set: { feed: t.url, accepted, seenAt: now } }, { upsert: true });
     }
   }
   return { read, added };

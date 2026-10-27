@@ -7,7 +7,8 @@ import type { KasSheetGateway } from './kas/sheet.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
 import type { PageReader } from './opps/importer.ts';
-import { collectOppPosts, handleOppAction, handleOppLink, lombaList, lombaTambah } from './opps/service.ts';
+import { collectOppPosts, handleOppAction, handleOppLink, lombaAmbil, lombaList, lombaSumber, lombaSumberTambah, lombaTambah } from './opps/service.ts';
+import { catalog } from './opps/sources.ts';
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { HELP_WORDS, helpText } from './help.ts';
@@ -46,10 +47,13 @@ export interface CoreDeps {
   reader?: PageReader;
   /** Google Sheets untuk laporan kas. Tanpa ini, /kas sheet menjelaskan cara mengaktifkannya. */
   sheets?: KasSheetGateway;
+  /** Feed tambahan operator (env LOMBA_FEEDS) — ikut katalog sumber lomba. */
+  lombaFeeds?: string[];
 }
 
 export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
   const platformOps = new Map<Platform, PlatformOps>();
+  const sources = catalog(deps.lombaFeeds ?? []);
   const opsFor = (p: Platform) => platformOps.get(p) ?? {};
 
   async function setup(cmd: CommandInvocation): Promise<Reply> {
@@ -121,6 +125,9 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     'data.hapus-kelas': dataHapusKelas,
     'lomba.list': lombaList,
     'lomba.tambah': (cmd) => lombaTambah(cmd, llm, deps.reader),
+    'lomba.sumber': (cmd) => lombaSumber(cmd, sources),
+    'lomba.sumber-tambah': (cmd) => lombaSumberTambah(cmd, deps.reader),
+    'lomba.ambil': (cmd) => lombaAmbil(cmd, llm, deps.reader, sources),
   };
 
   return {
@@ -176,7 +183,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
       const prefix = ev.actionId.split(':')[0];
       if (prefix === 'p') return handlePromiseAction(ev);
       if (prefix === 'k') return handleKasAction(ev);
-      if (prefix === 'o') return handleOppAction(ev);
+      if (prefix === 'o') return handleOppAction(ev, sources);
       if (prefix === 'ob') return handleOnboardingAction(ev, opsFor(ev.platform));
       if (prefix === 'd') return handleDataAction(ev);
       if (prefix === 'r') return handleReminderAction(ev);

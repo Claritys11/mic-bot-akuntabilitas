@@ -1,6 +1,6 @@
 import { AuditModel, ReminderModel, GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
-import { can } from '../team/roles.ts';
+import { can, rolesOf } from '../team/roles.ts';
 import { mention, type ActionEvent, type CommandInvocation, type Reply } from '../types.ts';
 
 // Hak menarik persetujuan (UU PDP): data satu anggota atau seluruh kelas bisa dihapus kapan saja.
@@ -26,15 +26,8 @@ export interface DeleteReport {
  * dan data anggotanya dihapus. Transaksi ledger tidak dihapus (saldo kelas harus tetap benar) tapi
  * namanya dianonimkan — satu-satunya pengecualian aturan append-only, lewat driver langsung.
  */
-/** Hapus nama anggota dari teks detail jejak audit (mis. "Budi Rp10.000"). */
-async function anonymizeAuditDetails(groupId: string, name: string): Promise<void> {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const rows = await AuditModel.find({ groupId, detail: { $regex: escaped } }, { detail: 1 }).lean();
-  await Promise.all(rows.map((r) => AuditModel.updateOne({ _id: r._id }, { $set: { detail: r.detail.split(name).join(DELETED) } })));
-}
 
 export async function deleteMemberData(platform: string, groupId: string, userId: string): Promise<DeleteReport> {
-  const member = await MemberModel.findOne({ platform, groupId, platformUserId: userId }, { displayName: 1 }).lean();
   const [janji, bukti, buffer, tx] = await Promise.all([
     PromiseModel.deleteMany({ groupId, 'owner.platformUserId': userId }),
     KasProofModel.deleteMany({ groupId, 'member.platformUserId': userId }),
@@ -53,7 +46,10 @@ export async function deleteMemberData(platform: string, groupId: string, userId
     GroupModel.updateOne({ platform, groupId }, { $pull: { 'roles.ketua': userId, 'roles.bendahara': userId, 'roles.sekretaris': userId, 'kas.reviewerIds': userId } }),
     // Jejak audit: tindakannya tetap tercatat (transparansi kas), tapi identitasnya dianonimkan.
     AuditModel.updateMany({ groupId, actorId: userId }, { $set: { actorId: 'deleted', actorName: DELETED } }),
-    ...(member?.displayName ? [anonymizeAuditDetails(groupId, member.displayName)] : []),
+    // Baris yang MEMBICARAKAN anggota ini (dia yang bayar / diberi peran): detailnya dihapus, tindakannya tetap.
+    AuditModel.updateMany({ groupId, subjectId: userId }, { $set: { detail: DELETED, subjectId: 'deleted' } }),
+    // Transaksi yang dia catat sebagai bendahara: pencatat dianonimkan (jumlah tetap).
+    TransactionModel.collection.updateMany({ groupId, createdBy: userId }, { $set: { createdBy: 'deleted' } }),
   ]);
   // Nama yang dihapus juga harus hilang dari Google Sheet laporan kas.
   await GroupModel.updateOne({ groupId, 'kas.sheetId': { $ne: null } }, { $set: { 'kas.sheetDirtyAt': new Date() } });
@@ -128,7 +124,12 @@ export async function handleDataAction(ev: ActionEvent): Promise<Reply> {
   if (verb === 'no') return { update: { text: 'Dibatalkan. Tidak ada data yang dihapus.', actions: [] } };
   if (verb === 'mem' && arg) {
     // Diperiksa ulang saat tombol ditekan: hanya orangnya sendiri atau pengurus.
-    if (arg !== ev.actor.platformUserId && !can(await getGroup(ev.platform, ev.groupId), ev, 'kelola')) return { reply: { text: 'Kamu hanya bisa menghapus datamu sendiri.', private: true } };
+    const g = await getGroup(ev.platform, ev.groupId);
+    if (arg !== ev.actor.platformUserId && !can(g, ev, 'kelola')) return { reply: { text: 'Kamu hanya bisa menghapus datamu sendiri.', private: true } };
+    // Sama seperti /tim hapus: ketua/bendahara lain hanya bisa dihapus datanya oleh admin server.
+    if (arg !== ev.actor.platformUserId && !ev.isAdmin && rolesOf(g, arg).some((r) => r === 'ketua' || r === 'bendahara')) {
+      return { reply: { text: 'Data ketua/bendahara lain hanya bisa dihapus oleh admin server (atau orangnya sendiri).', private: true } };
+    }
     const r = await deleteMemberData(ev.platform, ev.groupId, arg);
     console.log(`[privasi] data anggota dihapus di ${ev.groupId} oleh ${ev.actor.platformUserId}: ${JSON.stringify(r)}`);
     return {

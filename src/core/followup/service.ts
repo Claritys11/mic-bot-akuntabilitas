@@ -4,6 +4,7 @@ import { listMembers } from '../groups.ts';
 import { paidStatus, periodKey, periodLabel, type KasPeriod } from '../kas/ledger.ts';
 import { ledgerEntries, rateOf } from '../kas/service.ts';
 import { relevance } from '../opps/relevance.ts';
+import { visibleTo } from '../opps/sources.ts';
 import { inQuietHours } from '../quiet.ts';
 import { activeActions, confirmActions, detailLine, ids } from '../promises/service.ts';
 import { LABELS } from '../promises/voice.ts';
@@ -135,7 +136,7 @@ export async function digestText(g: GroupDoc, at: Date): Promise<string | null> 
   const lines: string[] = [];
   if (due.length) lines.push(`📌 **Deadline minggu ini (${due.length}):**\n${due.map((p) => `• ${p.task} — ${p.owner.displayName} (${formatWIB(p.deadline!)})`).join('\n')}`);
   if (overdue) lines.push(`⏳ Masih ada ${overdue} janji yang lewat deadline — yang bisa bantu, yuk dibantu 🤝`);
-  const relevant = opps.filter((o) => relevance(o.tags, g.major) > 0).slice(0, 3);
+  const relevant = opps.filter((o) => visibleTo(g, o) && relevance(o.tags, g.major) > 0).slice(0, 3);
   if (relevant.length) lines.push(`🏆 **Lomba yang deadline-nya dekat:**\n${relevant.map((o) => `• ${o.title} — ${formatWIB(o.deadline, 'date')}`).join('\n')}`);
   if (g.kas?.amount) {
     const members = await listMembers(g.platform as Platform, g.groupId);

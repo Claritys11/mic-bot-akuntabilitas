@@ -20,6 +20,11 @@ const GroupSchema = new Schema(
     // 'jeda' = rem darurat: bot berhenti total di kelas ini (tidak mencatat, membalas, atau menagih).
     pilotMode: { type: String, enum: ['off', 'diam', 'jeda'], default: 'off' },
     lastDigestAt: { type: Date, default: null },
+    // Sumber info lomba: katalog bawaan aktif semua kecuali yang dimatikan; custom khusus kelas ini.
+    lombaSources: {
+      disabled: { type: [String], default: [] },
+      custom: { type: [{ id: String, name: String, url: String, addedBy: String, _id: false }], default: [] },
+    },
     // Peran tim inti (ID anggota). Bendahara utama untuk pesan tetap di kas.treasurerId.
     roles: {
       ketua: { type: [String], default: [] },
@@ -224,6 +229,8 @@ const OpportunitySchema = new Schema(
     draft: { type: Boolean, default: false },
     // Asal data: 'seed', 'manual', 'link', atau 'feed:<domain>'.
     source: { type: String, default: 'seed' },
+    // ID sumber katalog / custom (lihat core/opps/sources.ts) — untuk menyaring per kelas.
+    sourceId: { type: String, default: null },
   },
   { timestamps: true },
 );
@@ -354,6 +361,8 @@ const AuditSchema = new Schema({
   actorName: { type: String, required: true },
   action: { type: String, required: true }, // mis. kas.setujui, kas.keluar, tim.tambah
   detail: { type: String, default: '' },
+  // Anggota yang dibicarakan (mis. yang bayar / diberi peran) — untuk hak hapus data.
+  subjectId: { type: String, default: null },
 });
 AuditSchema.index({ groupId: 1, at: -1 });
 // Cukup untuk 1 tahun ajaran + LPJ.

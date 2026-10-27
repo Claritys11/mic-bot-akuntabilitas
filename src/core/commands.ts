@@ -188,6 +188,16 @@ export const COMMANDS: CommandSpec[] = [
     description: 'Info lomba',
     subcommands: [
       { name: 'list', description: 'Lomba yang cocok untuk jurusan kelas ini' },
+      { name: 'sumber', description: 'Pilih sumber info lomba kelas ini (bawaan + tambahan)' },
+      {
+        name: 'sumber-tambah',
+        description: 'Tambah sumber info lomba (feed RSS/Atom) khusus kelas ini',
+        options: [
+          { name: 'link', description: 'Alamat feed, mis. https://situs.com/feed', type: 'string', required: true },
+          { name: 'nama', description: 'Nama sumber (opsional)', type: 'string' },
+        ],
+      },
+      { name: 'ambil', description: 'Ambil info lomba terbaru dari sumber kelas ini sekarang' },
       {
         name: 'tambah',
         description: 'Tambah info lomba (admin)',
