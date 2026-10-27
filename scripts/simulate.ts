@@ -183,7 +183,8 @@ const tick = async (label: string, iso: string) => {
 };
 await tick('Tick (Kamis 11:00) — H-2 sudah lewat saat konfirmasi', '2026-10-22T04:00:00Z');
 await tick('Tick Jumat 17:30 — H-0', '2026-10-23T10:30:00Z');
-const overdue = await tick('Tick Jumat 21:30 — lewat deadline → umumkan ke grup', '2026-10-23T14:30:00Z');
+await tick('Tick Jumat 21:30 — lewat deadline, tapi jam tenang → ditahan', '2026-10-23T14:30:00Z');
+const overdue = await tick('Tick Sabtu 06:30 — jam tenang selesai → umumkan ke grup', '2026-10-23T23:30:00Z');
 step('Ani klik ✅ Sudah selesai (terlambat)');
 printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(overdue, 'p:done:'), messageId: 'bot2' }));
 
@@ -253,7 +254,7 @@ step('Sinkron Google Sheet (isi tab yang akan ditulis)');
   const { GroupModel } = await import('../src/db/models.ts');
   await GroupModel.updateOne({ groupId: G }, { $set: { 'kas.sheetId': 'sheet-uji' } });
   const g = await GroupModel.findOne({ groupId: G }).lean();
-  const fake = { writeTabs: async (_id: string, tabs: { title: string; rows: unknown[][] }[]) => {
+  const fake = { readMarker: async () => null, writeTabs: async (_id: string, tabs: { title: string; rows: unknown[][] }[]) => {
     for (const t of tabs) console.log(`  [${t.title}]\n${t.rows.slice(0, 6).map((r) => `    ${r.join(' | ')}`).join('\n')}`);
   } };
   await syncKasSheet(fake as never, g as never);
