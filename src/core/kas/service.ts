@@ -23,7 +23,7 @@ import {
   type Reply,
   type SpeechLevel,
 } from '../types.ts';
-import { addReviewer, ensureReviewChannel, saveReviewTarget } from './review.ts';
+import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
@@ -326,7 +326,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
       channelId: (cmd.options.channel_tim as string | undefined) ?? null,
     });
     if (ch) {
-      await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'channel', channel: ch, reviewerIds: [cmd.actor.platformUserId] });
+      await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'channel', channel: ch });
       reviewNote = ch.created
         ? `${channelRef(ch.channelId)} (baru dibuat, privat untuk tim inti 🔒)`
         : `${channelRef(ch.channelId)}${ch.private ? ' 🔒' : ' — ⚠️ channel ini bisa dilihat semua anggota; detail bukti ikut terlihat. Sebaiknya pakai channel privat'}`;
@@ -337,6 +337,10 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
   } else if (cmd.options.cek_bukti === 'dm') {
     await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'dm' });
     reviewNote = 'DM bendahara';
+  }
+  if (typeof cmd.options.hapus_tim === 'string') {
+    await removeReviewer(cmd.platform, cmd.groupId, cmd.options.hapus_tim);
+    reviewNote = `${reviewNote ? `${reviewNote}\n` : ''}${mention({ platformUserId: cmd.options.hapus_tim })} dikeluarkan dari tim inti (tidak bisa menyetujui bukti lagi; akses channel tim inti cabut manual kalau perlu)`;
   }
   if (typeof cmd.options.tambah_tim === 'string') {
     const fresh = await getGroup(cmd.platform, cmd.groupId);

@@ -55,7 +55,7 @@ export async function collectOppPosts(at: Date): Promise<OutgoingMessage[]> {
   if (hour < 7 || hour >= 20) return []; // jangan posting malam hari
   const groups = await GroupModel.find({ oppsChannelId: { $ne: null }, pilotMode: { $nin: ['diam', 'jeda'] } }).lean<GroupDoc[]>();
   if (!groups.length) return [];
-  const opps = await OpportunityModel.find({ deadline: { $gt: at } }).lean<OpportunityDoc[]>();
+  const opps = await OpportunityModel.find({ deadline: { $gt: at }, draft: { $ne: true } }).lean<OpportunityDoc[]>();
   const out: OutgoingMessage[] = [];
   for (const g of groups) {
     const visible = opps.filter((o) => o.groupId == null || o.groupId === g.groupId);
@@ -139,7 +139,7 @@ export async function lombaList(cmd: CommandInvocation): Promise<Reply> {
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   const at = now();
-  const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, cmd.groupId] } }).lean<OpportunityDoc[]>();
+  const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, cmd.groupId] }, draft: { $ne: true } }).lean<OpportunityDoc[]>();
   const ranked = opps
     .map((o) => ({ o, s: relevance(o.tags, group.major) }))
     .filter((x) => x.s >= 2)

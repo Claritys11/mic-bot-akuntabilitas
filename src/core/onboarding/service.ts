@@ -248,9 +248,9 @@ async function finish(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessa
         'kas.treasurerId': d.treasurerId ?? null,
         'kas.reviewChannelId': d.reviewChannelId ?? null,
         'kas.reviewChannelPrivate': d.reviewChannelPrivate ?? false,
+        // Setup (ulang) = mulai bersih; pewawancara adalah admin, sudah berhak lewat isAdmin.
+        'kas.reviewerIds': [],
       },
-      // Yang mengatur setup ikut tim inti (boleh menyetujui bukti) selain bendahara.
-      ...(o.interviewerId ? { $addToSet: { 'kas.reviewerIds': o.interviewerId } } : {}),
     },
   );
   if (ops.listMembers) await upsertMembers(await ops.listMembers(o.groupId)).catch(() => undefined);

@@ -71,6 +71,7 @@ export const COMMANDS: CommandSpec[] = [
           },
           { name: 'channel_tim', description: 'Pakai channel tim inti yang sudah ada (opsional)', type: 'channel' },
           { name: 'tambah_tim', description: 'Tambah anggota tim inti (boleh menyetujui bukti kas)', type: 'user' },
+          { name: 'hapus_tim', description: 'Keluarkan anggota dari tim inti', type: 'user' },
         ],
       },
       { name: 'rekap', description: 'Siapa sudah/belum bayar periode ini', options: [{ name: 'umumkan', description: 'Tampilkan ke semua (bendahara)', type: 'boolean' }] },

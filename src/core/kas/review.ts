@@ -53,6 +53,10 @@ export async function saveReviewTarget(
   );
 }
 
+export async function removeReviewer(platform: string, groupId: string, userId: string): Promise<void> {
+  await GroupModel.updateOne({ platform, groupId }, { $pull: { 'kas.reviewerIds': userId } });
+}
+
 /** Tambah anggota tim inti: boleh menyetujui bukti, dan (kalau bisa) diberi akses ke channel tim inti. */
 export async function addReviewer(ops: PlatformOps, platform: string, groupId: string, userId: string, channelId: string | null): Promise<boolean> {
   await GroupModel.updateOne({ platform, groupId }, { $addToSet: { 'kas.reviewerIds': userId } });

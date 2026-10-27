@@ -186,15 +186,27 @@ const OpportunitySchema = new Schema(
     link: { type: String, required: true },
     description: { type: String, default: '' },
     sponsored: { type: Boolean, default: false },
-    // null = kurasi global (seed operator bot); selain itu hanya untuk server yang menambahkan.
+    // null = kurasi global (seed / feed otomatis); selain itu hanya untuk server yang menambahkan.
     groupId: { type: String, default: null },
     addedBy: { type: String, default: 'seed' },
+    kind: { type: String, enum: ['lomba', 'beasiswa'], default: 'lomba' },
+    fee: { type: String, default: null },
+    // Hasil baca link yang belum disetujui pengurus — tidak diposting/ditampilkan.
+    draft: { type: Boolean, default: false },
+    // Asal data: 'seed', 'manual', 'link', atau 'feed:<domain>'.
+    source: { type: String, default: 'seed' },
   },
   { timestamps: true },
 );
 OpportunitySchema.index({ groupId: 1, title: 1 }, { unique: true });
+OpportunitySchema.index({ link: 1 });
 export const OpportunityModel = mongoose.model('Opportunity', OpportunitySchema);
 export type OpportunityDoc = InferSchemaType<typeof OpportunitySchema> & { _id: mongoose.Types.ObjectId };
+
+// Item feed yang sudah pernah dibaca (supaya tidak dibaca ulang tiap hari).
+const FeedItemSchema = new Schema({ url: { type: String, required: true, unique: true }, feed: String, accepted: Boolean, seenAt: { type: Date, default: Date.now } });
+FeedItemSchema.index({ seenAt: 1 }, { expireAfterSeconds: 180 * 24 * 3600 });
+export const FeedItemModel = mongoose.model('FeedItem', FeedItemSchema);
 
 const OppPostSchema = new Schema(
   {

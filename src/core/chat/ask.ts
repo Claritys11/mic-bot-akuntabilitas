@@ -103,7 +103,7 @@ async function gatherFacts(msg: IncomingMessage, group: GroupDoc, topics: Topic[
   }
 
   if (topics.includes('lomba')) {
-    const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, msg.groupId] } })
+    const opps = await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, msg.groupId] }, draft: { $ne: true } })
       .sort({ deadline: 1 })
       .limit(3)
       .lean();

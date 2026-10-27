@@ -126,7 +126,7 @@ export async function digestText(g: GroupDoc, at: Date): Promise<string | null> 
   const [due, overdue, opps] = await Promise.all([
     PromiseModel.find({ groupId: g.groupId, status: 'active', shadow: { $ne: true }, deadline: { $gte: at, $lte: weekEnd } }).sort({ deadline: 1 }).limit(6).lean<PromiseDoc[]>(),
     PromiseModel.countDocuments({ groupId: g.groupId, status: 'overdue', shadow: { $ne: true } }),
-    OpportunityModel.find({ $or: [{ groupId: null }, { groupId: g.groupId }], deadline: { $gte: at, $lte: new Date(at.getTime() + 14 * 24 * H) } })
+    OpportunityModel.find({ $or: [{ groupId: null }, { groupId: g.groupId }], draft: { $ne: true }, deadline: { $gte: at, $lte: new Date(at.getTime() + 14 * 24 * H) } })
       .sort({ deadline: 1 })
       .limit(30)
       .lean(),
