@@ -42,14 +42,15 @@ export function createCore(llm: LLMProvider): Core {
       const configured = Boolean(await getGroup(cmd.platform, cmd.groupId));
       return { reply: { text: 'Oke, aku mulai wawancaranya di channel ini ya 👇', private: true }, messages: await startOnboarding(cmd.platform, cmd.groupId, cmd.channelId, configured) };
     }
-    const tutur = String(cmd.options.tutur ?? 'sopan') as SpeechLevel;
+    const tutur = cmd.options.tutur as SpeechLevel | undefined;
+    // Cara cepat: hanya opsi yang diisi yang berubah (mis. ganti tutur tanpa menghapus channel kas).
     const g = await setupGroup(cmd, {
       className: String(cmd.options.kelas),
-      major: String(cmd.options.jurusan ?? 'UMUM'),
-      speechLevel: ['santai', 'sopan', 'krama'].includes(tutur) ? tutur : 'sopan',
+      major: cmd.options.jurusan !== undefined ? String(cmd.options.jurusan) : undefined,
+      speechLevel: tutur && ['santai', 'sopan', 'krama'].includes(tutur) ? tutur : undefined,
       mainChannelId: cmd.channelId,
-      kasChannelId: (cmd.options.channel_kas as string | undefined) ?? null,
-      oppsChannelId: (cmd.options.channel_lomba as string | undefined) ?? null,
+      kasChannelId: cmd.options.channel_kas as string | undefined,
+      oppsChannelId: cmd.options.channel_lomba as string | undefined,
     });
     return {
       reply: {

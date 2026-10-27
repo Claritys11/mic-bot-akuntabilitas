@@ -7,26 +7,27 @@ export async function getGroup(platform: Platform, groupId: string): Promise<Gro
 
 export interface SetupInput {
   className: string;
-  major: string;
-  speechLevel: SpeechLevel;
+  /** undefined = tidak diubah (kelas baru: UMUM). */
+  major?: string;
+  speechLevel?: SpeechLevel;
   mainChannelId: string;
+  /** undefined = tidak diubah; null = dikosongkan. */
   kasChannelId?: string | null;
   oppsChannelId?: string | null;
 }
 
+/** Simpan profil kelas. Hanya field yang diberikan yang berubah — "/setup tutur:krama" tidak menghapus channel kas. */
 export async function setupGroup(ctx: Pick<Context, 'platform' | 'groupId'>, input: SetupInput): Promise<GroupDoc> {
+  const set: Record<string, unknown> = { className: input.className };
+  const onInsert: Record<string, unknown> = { mainChannelId: input.mainChannelId };
+  if (input.major !== undefined) set.major = input.major.toUpperCase();
+  else onInsert.major = 'UMUM';
+  if (input.speechLevel !== undefined) set.speechLevel = input.speechLevel;
+  if (input.kasChannelId !== undefined) set.kasChannelId = input.kasChannelId;
+  if (input.oppsChannelId !== undefined) set.oppsChannelId = input.oppsChannelId;
   const doc = await GroupModel.findOneAndUpdate(
     { platform: ctx.platform, groupId: ctx.groupId },
-    {
-      $set: {
-        className: input.className,
-        major: input.major.toUpperCase(),
-        speechLevel: input.speechLevel,
-        mainChannelId: input.mainChannelId,
-        kasChannelId: input.kasChannelId ?? null,
-        oppsChannelId: input.oppsChannelId ?? null,
-      },
-    },
+    { $set: set, $setOnInsert: onInsert },
     { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
   ).lean<GroupDoc>();
   return doc!;
