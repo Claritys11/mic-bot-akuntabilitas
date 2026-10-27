@@ -5,7 +5,7 @@ import { FLAG_TEXT, type ProofFlag } from '../core/kas/verify.ts';
 import { now } from '../core/time.ts';
 import type { Platform } from '../core/types.ts';
 import { AuditModel, GroupModel, KasProofModel, type GroupDoc } from '../db/models.ts';
-import { SheetsError, type SheetsClient } from '../integrations/google/sheets.ts';
+import { PUBLIC_REASON, SheetsError, type SheetsClient } from '../integrations/google/sheets.ts';
 
 // Tulis ulang Google Sheet kas tiap kelas yang ditandai "dirty" (dicek tiap menit, aman restart).
 
@@ -29,6 +29,8 @@ export async function syncKasSheet(client: SheetsClient, g: GroupDoc): Promise<v
     flagText: (f) => FLAG_TEXT[f as ProofFlag] ?? f,
     audits: audits.map((a) => ({ at: a.at, actorName: a.actorName, action: a.action, detail: a.detail ?? '' })),
   });
+  // Sheet dibuat publik setelah ditautkan → berhenti menulis sampai aksesnya dibatasi lagi.
+  if ((await client.publicAccess(g.kas!.sheetId!)) !== 'private') throw new Error(PUBLIC_REASON);
   // Cek lagi pemiliknya tepat sebelum menimpa (sheet bisa dipindah/ditiru setelah ditautkan).
   const marker = await client.readMarker(g.kas!.sheetId!);
   if (marker && marker !== sheetMarker(g.platform, g.groupId)) throw new Error('sheet ini milik kelas lain — sambungkan Google Sheet baru lewat /kas sheet');

@@ -10,17 +10,19 @@ describe('JWT akun layanan', () => {
     const [h, c, s] = signedAssertion(sa, 1_800_000_000).split('.');
     expect(createVerify('RSA-SHA256').update(`${h}.${c}`).verify(publicKey, s!, 'base64url')).toBe(true);
     const claims = JSON.parse(Buffer.from(c!, 'base64url').toString());
-    expect(claims).toMatchObject({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/spreadsheets', exp: 1_800_003_600 });
+    expect(claims).toMatchObject({ iss: sa.client_email, exp: 1_800_003_600 });
+    expect(claims.scope.split(' ')).toEqual(['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.metadata.readonly']);
   });
 });
 
-function fakeGoogle(opts: { status?: number; sheets?: string[]; markerStatus?: number } = {}) {
+function fakeGoogle(opts: { status?: number; sheets?: string[]; markerStatus?: number; public?: boolean } = {}) {
   const calls: { url: string; method: string; body: unknown }[] = [];
   const http = (async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
     calls.push({ url: u, method: init?.method ?? 'GET', body: init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : undefined });
     const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
     if (u.includes('oauth2')) return json(200, { access_token: 'tok', expires_in: 3600 });
+    if (u.includes('drive/v3')) return json(200, { permissions: [{ type: 'user' }, ...(opts.public ? [{ type: 'anyone' }] : [])] });
     if (opts.status) return json(opts.status, { error: { message: 'denied' } });
     if (u.includes('fields=properties.title')) return json(200, { properties: { title: 'Kas XI RPL 1' } });
     if (u.includes('/values/')) return opts.markerStatus ? json(opts.markerStatus, { error: { message: opts.markerStatus === 400 ? 'Unable to parse range: Ringkasan' : 'quota' } }) : json(200, { values: [['ID kelas (jangan diubah)', 'MIC-X']] });
@@ -36,6 +38,9 @@ describe('klien Google Sheets', () => {
   test('cek akses: berhasil → judul; 403 → minta dibagikan ke email akun layanan', async () => {
     expect(await new SheetsClient(sa, fakeGoogle().http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1', marker: 'MIC-X' });
     expect(await new SheetsClient(sa, fakeGoogle({ markerStatus: 400 }).http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1', marker: null });
+    // Sheet bisa dibuka siapa saja yang punya link → ditolak (isinya data anak).
+    const pub = await new SheetsClient(sa, fakeGoogle({ public: true }).http).check('abc');
+    expect(pub.ok === false && pub.reason).toContain('siapa saja');
     // Error lain saat membaca penanda → tolak (gagal tertutup), jangan dianggap sheet kosong.
     expect((await new SheetsClient(sa, fakeGoogle({ markerStatus: 429 }).http).check('abc')).ok).toBe(false);
     const denied = await new SheetsClient(sa, fakeGoogle({ status: 403 }).http).check('abc');

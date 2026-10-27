@@ -7,7 +7,8 @@ import { MARKER_LABEL, type SheetTab } from '../../core/kas/sheet.ts';
 // Akun layanan tidak punya kuota Drive sendiri, jadi spreadsheet DIBUAT pengurus lalu dibagikan
 // (Editor) ke email akun layanan; bot yang mengisi dan memperbaruinya.
 
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+// spreadsheets: isi sheet. drive.metadata.readonly: hanya membaca izin berbagi (tolak sheet yang publik).
+const SCOPE = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 export interface ServiceAccount {
@@ -15,6 +16,9 @@ export interface ServiceAccount {
   private_key: string;
   token_uri?: string;
 }
+
+export const PUBLIC_REASON =
+  'sheet ini bisa dibuka siapa saja yang punya link — isinya nama & status bayar anggota. Ubah Akses umum jadi "Dibatasi" dulu';
 
 export class SheetsError extends Error {
   constructor(
@@ -81,11 +85,29 @@ export class SheetsClient {
     return data;
   }
 
+  /**
+   * Siapa saja yang bisa membuka file ini. Sheet berisi nama anak & status bayar → kalau "siapa saja yang
+   * punya link" / satu domain bisa membuka, bot menolak menulis. Error (mis. Drive API belum aktif) → dilempar
+   * (gagal tertutup).
+   */
+  async publicAccess(spreadsheetId: string): Promise<'private' | 'anyone' | 'domain'> {
+    const res = await this.http(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}?fields=permissions(type,role)&supportsAllDrives=true`,
+      { headers: { authorization: `Bearer ${await this.accessToken()}` }, signal: AbortSignal.timeout(10_000) },
+    );
+    const data = (await res.json().catch(() => ({}))) as { permissions?: { type: string }[]; error?: { message?: string } };
+    if (!res.ok) throw new SheetsError(res.status, `Tidak bisa memeriksa izin berbagi: ${data.error?.message ?? res.status} (aktifkan Google Drive API di project)`);
+    const types = new Set((data.permissions ?? []).map((p) => p.type));
+    return types.has('anyone') ? 'anyone' : types.has('domain') ? 'domain' : 'private';
+  }
+
   /** Cek akses → judul spreadsheet. 403/404 = belum dibagikan ke akun layanan / link salah. */
   async check(spreadsheetId: string): Promise<{ ok: true; title: string; marker: string | null } | { ok: false; reason: string }> {
     try {
       const id = encodeURIComponent(spreadsheetId);
       const r = await this.call<{ properties: { title: string } }>(`${id}?fields=properties.title`);
+      const access = await this.publicAccess(spreadsheetId);
+      if (access !== 'private') return { ok: false, reason: PUBLIC_REASON };
       return { ok: true, title: r.properties.title, marker: await this.readMarker(spreadsheetId) };
     } catch (err) {
       const status = err instanceof SheetsError ? err.status : 0;

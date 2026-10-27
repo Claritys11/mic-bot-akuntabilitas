@@ -129,13 +129,15 @@ untuk bendahara/LPJ: tab *Ringkasan*, *Buku Kas* (saldo berjalan), *Status Iuran
 `/kas masuk`, atau perubahan iuran.
 
 **Sekali saja (operator bot):**
-1. [console.cloud.google.com](https://console.cloud.google.com) → buat project → *APIs & Services* → aktifkan **Google Sheets API**.
+1. [console.cloud.google.com](https://console.cloud.google.com) → buat project → *APIs & Services* → aktifkan **Google Sheets API**
+   dan **Google Drive API** (dipakai hanya untuk memeriksa sheet tidak dibagikan publik).
 2. *IAM & Admin → Service Accounts* → buat akun layanan → *Keys* → *Add key* → **JSON** → simpan sebagai
    `data/google-service-account.json` (folder `data/` tidak ikut git — kunci ini rahasia).
 3. `.env`: `GOOGLE_SERVICE_ACCOUNT_FILE=./data/google-service-account.json`, lalu restart bot.
 
 **Per kelas (bendahara/pengurus, di Discord):**
-1. Buat Google Sheet kosong ([sheets.new](https://sheets.new)) → **Bagikan** ke email akun layanan sebagai **Editor**
+1. Buat Google Sheet kosong ([sheets.new](https://sheets.new)) → **Bagikan** ke email akun layanan sebagai **Editor**,
+   biarkan *Akses umum* = **Dibatasi** (bot menolak sheet yang bisa dibuka siapa saja yang punya link)
    (`/kas sheet` menampilkan emailnya).
 2. `/kas sheet link:https://docs.google.com/spreadsheets/d/…` → selesai. `/kas sheet link:putus` untuk berhenti.
 
