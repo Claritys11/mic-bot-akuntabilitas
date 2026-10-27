@@ -11,7 +11,7 @@ import makeWASocket, {
   type WASocket,
   type proto,
 } from 'baileys';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { COMMANDS } from '../../core/commands.ts';
 import { addMissingMembers, groupsOfMember } from '../../core/groups.ts';
 import type { Core } from '../../core/index.ts';
@@ -48,6 +48,10 @@ const LOOSE_CHOICE_MS = 15 * 60_000;
 /** Pesan yang tertunda saat bot offline lebih tua dari ini diabaikan (jangan memproses pilihan basi). */
 const STALE_MS = 5 * 60_000;
 const SEND_GAP_MS = 600;
+/** Bukti transfer cukup kecil; tolak berkas besar sebelum diunduh (cegah memori habis). */
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+/** Kode pairing kedaluwarsa → minta baru, tapi dibatasi supaya nomor tidak dianggap spam oleh WhatsApp. */
+const MAX_PAIRING_ATTEMPTS = 5;
 const ERROR_TEXT = 'Maaf, ada kendala di sisi bot. Coba lagi sebentar ya 🙏';
 
 export interface WhatsAppOptions {
@@ -75,6 +79,7 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
   let sock: WASocket | null = null;
   let stopped = false;
   let retries = 0;
+  let pairingAttempts = 0;
   let markReady: () => void = () => undefined;
   let ready = new Promise<void>((r) => (markReady = r));
 
@@ -217,14 +222,31 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
   // ---------- Pesan masuk ----------
 
   async function attachmentsOf(m: WAMessage, c: proto.IMessage | undefined): Promise<Attachment[]> {
-    const media = c?.imageMessage ?? (c?.documentMessage?.mimetype?.startsWith('image/') ? c.documentMessage : null);
+    const doc = c?.documentMessage && /^image\/(jpeg|png|webp)$/.test(c.documentMessage.mimetype ?? '') ? c.documentMessage : null;
+    const media = c?.imageMessage ?? doc;
     if (!media) return [];
+    const size = Number(media.fileLength ?? 0);
+    if (size > MAX_MEDIA_BYTES) return [];
     return [
       {
-        name: 'documentMessage' in (c ?? {}) && c?.documentMessage ? (c.documentMessage.fileName ?? 'gambar') : 'gambar.jpg',
+        name: doc ? (doc.fileName ?? 'gambar') : 'gambar.jpg',
         contentType: media.mimetype ?? 'image/jpeg',
-        size: Number(media.fileLength ?? 0),
-        getData: async () => new Uint8Array(await downloadMediaMessage(m, 'buffer', {}, { logger: makeLogger(), reuploadRequest: sock!.updateMediaMessage })),
+        size,
+        getData: async () => {
+          // fileLength bisa dipalsukan pengirim → batasi juga saat mengunduh.
+          const stream = await downloadMediaMessage(m, 'stream', {}, { logger: makeLogger(), reuploadRequest: sock!.updateMediaMessage });
+          const chunks: Buffer[] = [];
+          let total = 0;
+          for await (const chunk of stream as AsyncIterable<Buffer>) {
+            total += chunk.length;
+            if (total > MAX_MEDIA_BYTES) {
+              stream.destroy();
+              throw new Error('Gambar terlalu besar (maks 10 MB)');
+            }
+            chunks.push(chunk);
+          }
+          return new Uint8Array(Buffer.concat(chunks));
+        },
       },
     ];
   }
@@ -256,7 +278,10 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
     // Kelas yang dimaksud: grup ini, atau (chat pribadi) kelas tempat pengirim terdaftar.
     let groupId = chatId;
     if (!isGroup) {
-      const groups = await groupsOfMember(PLATFORM, [authorJid, altJid]);
+      // Catatan anggota bisa basi (sudah keluar grup) → pastikan masih peserta grup saat ini.
+      const recorded = await groupsOfMember(PLATFORM, [authorJid, altJid]);
+      const groups: string[] = [];
+      for (const g of recorded) if ((await meta(g))?.participants.some((p) => sameUser(p, [authorJid, altJid]))) groups.push(g);
       if (groups.length !== 1) {
         await sendBody(
           chatId,
@@ -391,6 +416,7 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
       }
       if (u.connection === 'open') {
         retries = 0;
+        pairingAttempts = 0;
         markReady();
         console.log(`[whatsapp] online sebagai ${jidUser(s.user?.id ?? '')}`);
         try {
@@ -406,6 +432,17 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
         ready = new Promise<void>((r) => (markReady = r));
         const code = statusCode(u.lastDisconnect?.error);
         if (stopped) return;
+        if (!state.creds.registered) {
+          // Belum pernah login (kode pairing tidak dimasukkan tepat waktu) → sesi setengah jadi dibuang, minta kode baru.
+          if (++pairingAttempts >= MAX_PAIRING_ATTEMPTS) {
+            console.error(`[whatsapp] kode pairing tidak dipakai ${MAX_PAIRING_ATTEMPTS}x. Jalankan ulang bot saat HP nomor bot sudah siap.`);
+            return;
+          }
+          await rm(opts.authDir, { recursive: true, force: true });
+          console.warn(`[whatsapp] kode pairing kedaluwarsa, membuat kode baru (${pairingAttempts}/${MAX_PAIRING_ATTEMPTS - 1})...`);
+          setTimeout(() => void connect().catch((err) => console.error('[whatsapp] gagal menyambung:', err)), 3_000);
+          return;
+        }
         if (code === DisconnectReason.loggedOut) {
           console.error(`[whatsapp] sesi dikeluarkan dari HP. Hapus folder ${opts.authDir} lalu jalankan ulang untuk pairing lagi.`);
           return;
@@ -436,8 +473,13 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
 
     s.ev.on('group-participants.update', (ev) => {
       groupCache.delete(ev.id);
-      if (ev.action !== 'add') return;
       const ids = ev.participants.map((p) => jidNormalizedUser(p.id));
+      if (ev.action === 'remove') {
+        // Keluar/dikeluarkan → tidak lagi ditagih kas & tidak bisa memakai chat pribadi untuk kelas ini.
+        void MemberModel.updateMany({ platform: PLATFORM, groupId: ev.id, platformUserId: { $in: ids } }, { $set: { active: false } }).catch(() => undefined);
+        return;
+      }
+      if (ev.action !== 'add') return;
       if (ids.some(isBot)) void greet(ev.id);
       else void addMissingMembers(ids.map((j) => toMember(ev.id, j))).catch(() => undefined);
     });
