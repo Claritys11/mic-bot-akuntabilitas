@@ -31,18 +31,26 @@ export interface DeleteReport {
  * Data lama tanpa subjectId: hapus nama sebagai kata utuh (bukan potongan kata), hanya untuk nama ≥ 3 huruf.
  * Catatan buku kas lama "dicatat <nama>" / "tunai, diterima <nama>" juga dibersihkan.
  */
-async function scrubLegacy(groupId: string, name: string): Promise<void> {
+async function scrubLegacy(platform: string, groupId: string, userId: string, name: string): Promise<void> {
   if (name.trim().length < 3) return;
+  // Catatan buku kas hanya pada transaksi yang memang dia catat (bukan sekadar nama yang sama).
+  await TransactionModel.collection.updateMany({ groupId, createdBy: userId, note: { $in: [`dicatat ${name}`, `tunai, diterima ${name}`] } }, { $set: { note: '' } });
+  // Nama tampilan bisa diganti sendiri: kalau sama dengan anggota lain yang masih ada, jangan sentuh jejak audit
+  // (mencegah orang meniru nama teman lalu "menghapus" jejak teman itu).
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const twin = await MemberModel.exists({ platform, groupId, platformUserId: { $ne: userId }, displayName: { $regex: `^${escaped}$`, $options: 'i' } });
+  if (twin) return;
   const whole = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'gu');
   const rows = await AuditModel.find({ groupId, subjectId: null, detail: { $regex: escaped } }, { detail: 1 }).lean();
   const once = new RegExp(whole.source, 'u'); // tanpa flag g: .test() tidak menyimpan posisi antar-baris
   await Promise.all(rows.filter((r) => once.test(r.detail)).map((r) => AuditModel.updateOne({ _id: r._id }, { $set: { detail: r.detail.replace(whole, DELETED) } })));
-  await TransactionModel.collection.updateMany({ groupId, note: { $in: [`dicatat ${name}`, `tunai, diterima ${name}`] } }, { $set: { note: '' } });
 }
 
 export async function deleteMemberData(platform: string, groupId: string, userId: string): Promise<DeleteReport> {
   const member = await MemberModel.findOne({ platform, groupId, platformUserId: userId }, { displayName: 1 }).lean();
+  // Baris lama (sebelum ada subjectId) & catatan buku kas lama yang memuat nama — sebelum createdBy dan data
+  // anggota ini dianonimkan/dihapus, karena pengecekannya bergantung pada keduanya.
+  if (member?.displayName) await scrubLegacy(platform, groupId, userId, member.displayName);
   const [janji, bukti, buffer, tx] = await Promise.all([
     PromiseModel.deleteMany({ groupId, 'owner.platformUserId': userId }),
     KasProofModel.deleteMany({ groupId, 'member.platformUserId': userId }),
@@ -63,8 +71,6 @@ export async function deleteMemberData(platform: string, groupId: string, userId
     AuditModel.updateMany({ groupId, actorId: userId }, { $set: { actorId: 'deleted', actorName: DELETED } }),
     // Baris yang MEMBICARAKAN anggota ini (dia yang bayar / diberi peran): detailnya dihapus, tindakannya tetap.
     AuditModel.updateMany({ groupId, subjectId: userId }, { $set: { detail: DELETED, subjectId: 'deleted' } }),
-    // Baris lama (sebelum ada subjectId) & catatan buku kas lama yang memuat nama: dibersihkan per kata utuh.
-    ...(member?.displayName ? [scrubLegacy(groupId, member.displayName)] : []),
     // Transaksi yang dia catat sebagai bendahara: pencatat dianonimkan (jumlah tetap).
     TransactionModel.collection.updateMany({ groupId, createdBy: userId }, { $set: { createdBy: 'deleted' } }),
   ]);
