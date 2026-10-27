@@ -35,6 +35,8 @@ const EnvSchema = z.object({
   LLM_DATA_COLLECTION: z.preprocess(emptyToUndefined, z.enum(['allow', 'deny']).default('deny')),
   LLM_TIMEOUT_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(60_000)),
 
+  // Google Sheets laporan kas: path file JSON kunci akun layanan (rahasia — taruh di data/, sudah di .gitignore).
+  GOOGLE_SERVICE_ACCOUNT_FILE: optionalString,
   // Feed RSS/Atom info lomba & beasiswa (dipisah koma, https). "off" = tidak mengambil otomatis.
   LOMBA_FEEDS: z.preprocess(emptyToUndefined, z.string().default('https://www.lombasma.com/feed,https://www.indbeasiswa.com/feed')),
   TZ: z.preprocess(emptyToUndefined, z.string().default('Asia/Jakarta')),
@@ -62,6 +64,7 @@ export interface Config {
   };
   demoTimeScale: number;
   lombaFeeds: string[];
+  googleServiceAccountFile?: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -93,6 +96,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       dataCollection: e.LLM_DATA_COLLECTION,
     },
     demoTimeScale: e.DEMO_TIME_SCALE,
+    googleServiceAccountFile: e.GOOGLE_SERVICE_ACCOUNT_FILE,
     lombaFeeds: e.LOMBA_FEEDS === 'off' ? [] : e.LOMBA_FEEDS.split(',').map((u) => u.trim()).filter((u) => /^https:\/\//.test(u)),
   };
 }

@@ -244,6 +244,21 @@ if (hasAction(linkOut, 'o:save:')) {
   printReply(await core.onCommand({ ...ctx(ani), name: 'lomba.list', options: {} }));
 }
 
+// ---- Laporan kas di Google Sheets (klien palsu — tanpa internet) ----
+step('Ketua: /kas keluar 7000 beli spidol');
+printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'kas.keluar', options: { nominal: 7000, keperluan: 'beli spidol' } }));
+step('Sinkron Google Sheet (isi tab yang akan ditulis)');
+{
+  const { syncKasSheet } = await import('../src/jobs/kasSheets.ts');
+  const { GroupModel } = await import('../src/db/models.ts');
+  await GroupModel.updateOne({ groupId: G }, { $set: { 'kas.sheetId': 'sheet-uji' } });
+  const g = await GroupModel.findOne({ groupId: G }).lean();
+  const fake = { writeTabs: async (_id: string, tabs: { title: string; rows: unknown[][] }[]) => {
+    for (const t of tabs) console.log(`  [${t.title}]\n${t.rows.slice(0, 6).map((r) => `    ${r.join(' | ')}`).join('\n')}`);
+  } };
+  await syncKasSheet(fake as never, g as never);
+}
+
 // ---- Tindak lanjut ala teman sekelas ----
 step('Ani: "aku yang bawa banner ya" (belum ada deadline → ditanya) lalu tidak menjawab');
 printOut(await core.onMessage(say(ani, 'aku yang bawa banner ya')));

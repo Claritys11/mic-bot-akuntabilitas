@@ -66,6 +66,7 @@ dan mengambil info lomba/beasiswa baru dari internet setiap hari.
 | Tagihan bertahap | H-2 / H-1 / H-0 lewat DM (cadangan: channel), lewat deadline → diumumkan ke grup |
 | Tingkat tutur | `santai`, `sopan`, `krama` (Jawa), dipilih saat wawancara setup |
 | Janji & rapor | `/janji list`, `/janji selesai`, `/rapor-kelas` (skor di level kelas saja) |
+| Laporan kas Google Sheets | `/kas sheet link:…` — Ringkasan, Buku Kas, Status Iuran, Bukti Transfer diperbarui otomatis; `/kas keluar`, `/kas masuk` untuk arus kas lain |
 | Kas kelas | `/kas atur`, kirim foto bukti di channel kas → cek duplikat/nominal/tanggal → bendahara ✅/❌, `/kas rekap`, `/kas ekspor` (CSV) |
 | Rangkuman | `/rangkum jam:3` (pesan mentah disimpan maks. 48 jam, TTL index) |
 | Info lomba | maks. 2 posting/minggu sesuai jurusan, tombol 👥 *Bentuk tim* → thread + janji awal, `/lomba list`, `/lomba tambah link:…` (dibaca otomatis) |
@@ -119,6 +120,28 @@ tanpa opsi. Cara cepat tetap ada: `/setup kelas:"XI RPL 2" jurusan:RPL tutur:sop
 
 `DEMO_TIME_SCALE=1440` berarti 1 menit nyata = 1 hari, jadi tagihan H-2 sampai lewat deadline untuk janji
 "Jumat" muncul dalam beberapa menit. Jam virtual kembali normal setelah restart.
+
+## Laporan kas di Google Sheets
+
+Catatan kas utama tetap di database bot (buku kas append-only). Google Sheet adalah **laporan otomatis**
+untuk bendahara/LPJ: tab *Ringkasan*, *Buku Kas* (saldo berjalan), *Status Iuran* (6 periode), dan
+*Bukti Transfer* diperbarui ±1 menit setelah ada iuran disetujui, bukti masuk/ditolak, `/kas keluar`,
+`/kas masuk`, atau perubahan iuran.
+
+**Sekali saja (operator bot):**
+1. [console.cloud.google.com](https://console.cloud.google.com) → buat project → *APIs & Services* → aktifkan **Google Sheets API**.
+2. *IAM & Admin → Service Accounts* → buat akun layanan → *Keys* → *Add key* → **JSON** → simpan sebagai
+   `data/google-service-account.json` (folder `data/` tidak ikut git — kunci ini rahasia).
+3. `.env`: `GOOGLE_SERVICE_ACCOUNT_FILE=./data/google-service-account.json`, lalu restart bot.
+
+**Per kelas (bendahara/pengurus, di Discord):**
+1. Buat Google Sheet kosong ([sheets.new](https://sheets.new)) → **Bagikan** ke email akun layanan sebagai **Editor**
+   (`/kas sheet` menampilkan emailnya).
+2. `/kas sheet link:https://docs.google.com/spreadsheets/d/…` → selesai. `/kas sheet link:putus` untuk berhenti.
+
+Akun layanan Google tidak punya kuota penyimpanan sendiri, jadi spreadsheet dibuat oleh pengurus lalu
+dibagikan ke bot. Nilai ditulis apa adanya (tanpa formula). Sheet berisi nama & status bayar anggota —
+bagikan hanya ke pengurus.
 
 ## WhatsApp (eksperimental)
 

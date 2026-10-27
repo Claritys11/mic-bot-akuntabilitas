@@ -40,6 +40,8 @@ export async function deleteMemberData(platform: string, groupId: string, userId
     MemberModel.deleteOne({ platform, groupId, platformUserId: userId }),
     GroupModel.updateOne({ platform, groupId, 'kas.treasurerId': userId }, { $set: { 'kas.treasurerId': null } }),
   ]);
+  // Nama yang dihapus juga harus hilang dari Google Sheet laporan kas.
+  await GroupModel.updateOne({ groupId, 'kas.sheetId': { $ne: null } }, { $set: { 'kas.sheetDirtyAt': new Date() } });
   return { janji: janji.deletedCount, buktiKas: bukti.deletedCount, pesanBuffer: buffer.deletedCount, transaksiDianonimkan: tx.modifiedCount };
 }
 

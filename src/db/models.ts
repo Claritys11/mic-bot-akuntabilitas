@@ -34,6 +34,12 @@ const GroupSchema = new Schema(
       reviewChannelPrivate: { type: Boolean, default: false },
       // Tim inti yang boleh menyetujui bukti selain bendahara & admin (daftar eksplisit).
       reviewerIds: { type: [String], default: [] },
+      // Google Sheet laporan kas (diisi bot). dirty > synced → perlu ditulis ulang.
+      sheetId: { type: String, default: null },
+      sheetTitle: { type: String, default: null },
+      sheetDirtyAt: { type: Date, default: null },
+      sheetSyncedAt: { type: Date, default: null },
+      sheetError: { type: String, default: null },
     },
   },
   { timestamps: true },

@@ -9,6 +9,8 @@ services:
     volumes:
       # Sesi login WhatsApp: tetap ada walau container dibuat ulang (tidak perlu pairing lagi).
       - wa-auth:/app/data/wa-auth
+      # Laporan kas Google Sheets (opsional): buka komentar setelah file kuncinya ada.
+      # - ./data/google-service-account.json:/app/data/google-service-account.json:ro
     depends_on:
       mongo:
         condition: service_healthy

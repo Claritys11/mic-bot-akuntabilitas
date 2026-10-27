@@ -2,7 +2,8 @@ import type { LLMProvider } from '../llm/provider.ts';
 import { collectPromiseReminders } from './billing/service.ts';
 import { answerQuestion } from './chat/ask.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
-import { collectUndeliveredProofs } from './kas/service.ts';
+import { collectUndeliveredProofs, kasArus, kasSheet } from './kas/service.ts';
+import type { KasSheetGateway } from './kas/sheet.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
 import type { PageReader } from './opps/importer.ts';
@@ -40,6 +41,8 @@ const fail = (text: string): Reply => ({ reply: { text, private: true } });
 export interface CoreDeps {
   /** Pembaca halaman/feed web (aman SSRF). Tanpa ini, fitur ambil data lomba dari link nonaktif. */
   reader?: PageReader;
+  /** Google Sheets untuk laporan kas. Tanpa ini, /kas sheet menjelaskan cara mengaktifkannya. */
+  sheets?: KasSheetGateway;
 }
 
 export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
@@ -96,6 +99,9 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     'kas.atur': (cmd) => kasAtur(cmd, opsFor(cmd.platform)),
     'kas.rekap': kasRekap,
     'kas.ekspor': kasEkspor,
+    'kas.sheet': (cmd) => kasSheet(cmd, deps.sheets),
+    'kas.keluar': (cmd) => kasArus(cmd, 'pengeluaran'),
+    'kas.masuk': (cmd) => kasArus(cmd, 'pemasukan'),
     rangkum: (cmd) => rangkum(llm, cmd),
     'pilot.mode': pilotMode,
     'pilot.ekspor': pilotEkspor,

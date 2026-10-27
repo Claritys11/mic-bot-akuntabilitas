@@ -11,6 +11,8 @@ import { recordStartup } from './src/db/health.ts';
 import { recordLlmCall } from './src/db/llmUsage.ts';
 import { OpenRouterProvider } from './src/llm/openrouter.ts';
 import { startFeedJob } from './src/jobs/feeds.ts';
+import { startKasSheetJob } from './src/jobs/kasSheets.ts';
+import { loadServiceAccount, SheetsClient } from './src/integrations/google/sheets.ts';
 import { startScheduler } from './src/scheduler/index.ts';
 import { webReader } from './src/tools/reader.ts';
 
@@ -30,7 +32,16 @@ const llm = OpenRouterProvider.fromConfig(config);
 llm.onCall((r) => recordLlmCall(r));
 console.log(`[llm] ${llm.enabled ? `aktif → ${config.llm.text.baseUrl} (${config.llm.text.model})` : 'nonaktif — deteksi janji pakai heuristik'}`);
 
-const core = createCore(llm, { reader: webReader });
+// Google Sheets (opsional): tanpa file akun layanan, /kas sheet menjelaskan cara mengaktifkan.
+let sheets: SheetsClient | undefined;
+if (config.googleServiceAccountFile) {
+  try {
+    sheets = new SheetsClient(await loadServiceAccount(config.googleServiceAccountFile));
+  } catch (err) {
+    console.error('[sheets] akun layanan Google tidak bisa dibaca:', (err as Error).message);
+  }
+}
+const core = createCore(llm, { reader: webReader, sheets });
 const senders: Partial<Record<Platform, Sender>> = {};
 const stops: (() => Promise<void>)[] = [];
 
@@ -88,11 +99,13 @@ const down = await recordStartup();
 if (down) alertOperator(`⚠️ MIC-Bot sempat mati ±${down.minutes} menit (sejak ${down.from.toISOString()}). Kalau sedang pilot, catat ini — data di rentang itu tidak lengkap.`);
 const stopScheduler = startScheduler(core, router, undefined, alertOperator);
 const stopFeeds = startFeedJob(llm, webReader, config.lombaFeeds);
+const stopSheets = sheets ? startKasSheetJob(sheets) : () => undefined;
 
 const shutdown = async (signal: string) => {
   console.log(`[app] ${signal}, mematikan...`);
   stopScheduler();
   stopFeeds();
+  stopSheets();
   for (const stop of stops) await stop().catch(() => undefined);
   await disconnectDb();
   process.exit(0);

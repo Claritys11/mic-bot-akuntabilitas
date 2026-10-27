@@ -24,6 +24,7 @@ import {
   type SpeechLevel,
 } from '../types.ts';
 import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
+import { spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
@@ -125,6 +126,7 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     flags,
     period: periodKey(transferAt > at ? at : transferAt, kasPeriod),
   });
+  await markKasDirty(msg.groupId);
   return deliverProof(doc.toObject() as KasProofDoc, group, { replyTo: msg.id, isDirect: Boolean(msg.isDirect), sender: msg.author, readerOn: llm.enabled });
 }
 
@@ -279,6 +281,7 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
     period = periodKey(periodRange(period).end, kasPeriod);
   }
   await TransactionModel.insertMany(entries);
+  await markKasDirty(ev.groupId);
 
   return {
     update: {
@@ -308,6 +311,7 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
 
   if (verb === 'no') {
     await KasProofModel.updateOne({ _id: id }, { $set: { status: 'rejected', reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } });
+    await markKasDirty(ev.groupId);
     return {
       update: {
         text: '',
@@ -381,6 +385,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
     },
   );
 
+  await markKasDirty(cmd.groupId);
   // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
   let reviewNote: string | null = null;
   const wantChannel = cmd.options.cek_bukti === 'channel' || typeof cmd.options.channel_tim === 'string';
@@ -477,6 +482,96 @@ export async function kasRekap(cmd: CommandInvocation): Promise<Reply> {
           { name: `Belum (${status.unpaid.length})`, value: list(status.unpaid, true), inline: true },
         ],
         footer: publik ? 'Terima kasih yang sudah gotong royong 🙏' : 'Hanya kamu yang melihat rekap ini.',
+      },
+    },
+  };
+}
+
+/** Tandai Google Sheet kelas perlu ditulis ulang (job sinkron yang menulis). Tanpa sheet → tidak apa-apa. */
+export async function markKasDirty(groupId: string): Promise<void> {
+  await GroupModel.updateOne({ groupId, 'kas.sheetId': { $ne: null } }, { $set: { 'kas.sheetDirtyAt': new Date() } }).catch(() => undefined);
+}
+
+const SHEET_HELP = (email: string) =>
+  `Cara menyambungkan laporan kas ke Google Sheets:\n` +
+  `1. Buat Google Sheet kosong (sheets.new).\n` +
+  `2. Klik **Share/Bagikan** → tambahkan \`${email}\` sebagai **Editor**.\n` +
+  `3. Tempel linknya: \`/kas sheet link:https://docs.google.com/spreadsheets/d/...\`\n` +
+  `Aku isi tab Ringkasan, Buku Kas, Status Iuran, dan Bukti Transfer, lalu memperbaruinya otomatis tiap ada perubahan.\n` +
+  `⚠️ Sheet berisi nama & status bayar anggota — bagikan hanya ke pengurus.`;
+
+/** /kas sheet [link] — sambungkan / lihat status Google Sheet laporan kas. */
+export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway): Promise<Reply> {
+  const group = await getGroup(cmd.platform, cmd.groupId);
+  if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!isTreasurer(group, cmd)) return { reply: { text: 'Laporan kas di Google Sheets hanya bisa diatur bendahara / pengurus.', private: true } };
+  if (!sheets) return { reply: { text: 'Integrasi Google Sheets belum diaktifkan di bot ini (operator bot perlu mengisi GOOGLE_SERVICE_ACCOUNT_FILE). Sementara pakai `/kas ekspor` (CSV).', private: true } };
+  const link = typeof cmd.options.link === 'string' ? cmd.options.link.trim() : '';
+  if (!link) {
+    const k = group.kas;
+    const status = k?.sheetId
+      ? `📊 Tersambung ke **${k.sheetTitle ?? 'Google Sheet'}**: https://docs.google.com/spreadsheets/d/${k.sheetId}\n` +
+        (k.sheetError ? `⚠️ Sinkron terakhir gagal: ${k.sheetError}` : k.sheetSyncedAt ? `Terakhir diperbarui ${formatWIB(k.sheetSyncedAt)}.` : 'Sedang disiapkan…')
+      : 'Belum ada Google Sheet yang tersambung.';
+    return { reply: { text: `${status}\n\n${SHEET_HELP(sheets.serviceEmail)}`, private: true } };
+  }
+  if (link === 'putus' || link === 'hapus') {
+    await GroupModel.updateOne({ _id: group._id }, { $set: { 'kas.sheetId': null, 'kas.sheetTitle': null, 'kas.sheetError': null } });
+    return { reply: { text: 'Google Sheet diputus — aku berhenti memperbaruinya (isinya tidak dihapus).', private: true } };
+  }
+  const id = spreadsheetIdOf(link);
+  if (!id) return { reply: { text: 'Itu bukan link Google Sheets. Contoh: https://docs.google.com/spreadsheets/d/…/edit', private: true } };
+  const check = await sheets.check(id);
+  if (!check.ok) return { reply: { text: `Belum bisa dibuka: ${check.reason}.\n\n${SHEET_HELP(sheets.serviceEmail)}`, private: true } };
+  await GroupModel.updateOne(
+    { _id: group._id },
+    { $set: { 'kas.sheetId': id, 'kas.sheetTitle': check.title.slice(0, 100), 'kas.sheetDirtyAt': new Date(), 'kas.sheetSyncedAt': null, 'kas.sheetError': null } },
+  );
+  return {
+    reply: {
+      text: `✅ Tersambung ke **${sanitize(check.title.slice(0, 100))}**. Dalam ±1 menit aku isi tab Ringkasan, Buku Kas, Status Iuran, dan Bukti Transfer — setelah itu diperbarui otomatis.\nhttps://docs.google.com/spreadsheets/d/${id}`,
+      private: true,
+    },
+  };
+}
+
+/** /kas keluar & /kas masuk — pengeluaran kas dan pemasukan selain iuran (bendahara). */
+export async function kasArus(cmd: CommandInvocation, kind: 'pengeluaran' | 'pemasukan'): Promise<Reply> {
+  const group = await getGroup(cmd.platform, cmd.groupId);
+  if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!isTreasurer(group, cmd)) return { reply: { text: 'Hanya bendahara / tim inti yang bisa mencatat arus kas.', private: true } };
+  const nominal = Number(cmd.options.nominal);
+  const why = String(cmd.options.keperluan ?? cmd.options.keterangan ?? '').trim().slice(0, 120);
+  if (!Number.isInteger(nominal) || nominal <= 0 || nominal > 100_000_000) return { reply: { text: 'Nominal harus angka rupiah > 0.', private: true } };
+  if (!why) return { reply: { text: 'Tulis keperluannya ya (mis. "beli spidol").', private: true } };
+  const at = now();
+  const entries = await ledgerEntries(cmd.groupId);
+  const saldo = entries.reduce((s, e) => s + e.amount, 0);
+  if (kind === 'pengeluaran' && nominal > saldo) return { reply: { text: `Saldo kas cuma ${rupiah(saldo)} — pengeluaran ${rupiah(nominal)} belum bisa dicatat. Cek lagi ya.`, private: true } };
+  await TransactionModel.create({
+    platform: cmd.platform,
+    groupId: cmd.groupId,
+    memberId: null,
+    memberName: why,
+    amount: kind === 'pengeluaran' ? -nominal : nominal,
+    kind,
+    period: periodKey(at, (group.kas?.period ?? 'bulanan') as KasPeriod),
+    note: `dicatat ${cmd.actor.displayName}`,
+    createdBy: cmd.actor.platformUserId,
+  });
+  await markKasDirty(cmd.groupId);
+  const after = saldo + (kind === 'pengeluaran' ? -nominal : nominal);
+  return {
+    reply: {
+      card: {
+        title: kind === 'pengeluaran' ? '💸 Pengeluaran kas dicatat' : '💰 Pemasukan kas dicatat',
+        tone: 'success',
+        fields: [
+          { name: kind === 'pengeluaran' ? 'Keperluan' : 'Keterangan', value: sanitize(why), inline: true },
+          { name: 'Nominal', value: rupiah(nominal), inline: true },
+          { name: 'Saldo sekarang', value: rupiah(after), inline: true },
+        ],
+        footer: `Dicatat oleh ${cmd.actor.displayName}. Koreksi = catat transaksi baru (buku kas tidak bisa diubah).`,
       },
     },
   };

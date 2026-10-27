@@ -77,6 +77,27 @@ export const COMMANDS: CommandSpec[] = [
       },
       { name: 'rekap', description: 'Siapa sudah/belum bayar periode ini', options: [{ name: 'umumkan', description: 'Tampilkan ke semua (bendahara)', type: 'boolean' }] },
       { name: 'ekspor', description: 'Ekspor ledger CSV (bahan LPJ)' },
+      {
+        name: 'sheet',
+        description: 'Laporan kas otomatis di Google Sheets (pengurus)',
+        options: [{ name: 'link', description: 'Link Google Sheet yang sudah dibagikan ke bot (kosong = cara pakai & status; "putus" = berhenti)', type: 'string' }],
+      },
+      {
+        name: 'keluar',
+        description: 'Catat pengeluaran kas (bendahara)',
+        options: [
+          { name: 'nominal', description: 'Rupiah', type: 'integer', required: true },
+          { name: 'keperluan', description: 'Mis. beli spidol', type: 'string', required: true },
+        ],
+      },
+      {
+        name: 'masuk',
+        description: 'Catat pemasukan selain iuran, mis. donasi (bendahara)',
+        options: [
+          { name: 'nominal', description: 'Rupiah', type: 'integer', required: true },
+          { name: 'keterangan', description: 'Mis. sisa dana study tour', type: 'string', required: true },
+        ],
+      },
     ],
   },
   {
