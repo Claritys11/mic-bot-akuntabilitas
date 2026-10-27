@@ -123,9 +123,9 @@ export const COMMANDS: CommandSpec[] = [
         name: 'tambah',
         description: 'Tambah info lomba (admin)',
         options: [
-          { name: 'judul', description: 'Nama lomba', type: 'string', required: true },
-          { name: 'deadline', description: 'YYYY-MM-DD', type: 'string', required: true },
-          { name: 'link', description: 'Link info', type: 'string', required: true },
+          { name: 'link', description: 'Link info lomba — cukup ini, sisanya aku baca sendiri', type: 'string', required: true },
+          { name: 'judul', description: 'Isi manual kalau link tidak terbaca', type: 'string' },
+          { name: 'deadline', description: 'YYYY-MM-DD (manual)', type: 'string' },
           { name: 'penyelenggara', description: 'Penyelenggara', type: 'string' },
           { name: 'tag', description: 'Tag dipisah koma, mis. rpl,web', type: 'string' },
           { name: 'deskripsi', description: 'Deskripsi singkat', type: 'string' },

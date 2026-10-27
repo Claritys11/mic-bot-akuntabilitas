@@ -2,13 +2,18 @@ import { describe, expect, test } from 'bun:test';
 import { FetchRefused, htmlToText, isBlockedAddress, parseFeed, safeFetch } from '../src/tools/web.ts';
 
 describe('cegah SSRF', () => {
-  test.each(['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.10', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1'])('%s ditolak', (ip) => {
+  test.each([
+    '127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.10', '169.254.169.254', '100.64.0.1', '0.0.0.0',
+    '::1', '::', 'fd00::1', 'fe80::1', 'fec0::1', 'ff02::1',
+    '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:a9fe:a9fe', '::127.0.0.1', '0:0:0:0:0:ffff:10.0.0.1',
+    '64:ff9b::7f00:1', '2002:7f00:1::', '2001:db8::1', '2001::1',
+  ])('%s ditolak', (ip) => {
     expect(isBlockedAddress(ip)).toBe(true);
   });
-  test.each(['104.21.3.4', '8.8.8.8', '2606:4700::1111'])('%s boleh', (ip) => {
+  test.each(['104.21.3.4', '8.8.8.8', '2606:4700::1111', '::ffff:8.8.8.8'])('%s boleh', (ip) => {
     expect(isBlockedAddress(ip)).toBe(false);
   });
-  test.each(['http://example.com', 'https://localhost/', 'https://127.0.0.1/', 'https://[::1]/', 'https://example.com:8443/', 'https://user:pw@example.com/', 'file:///etc/passwd', 'bukan url'])(
+  test.each(['http://example.com', 'https://localhost/', 'https://127.0.0.1/', 'https://[::1]/', 'https://[::ffff:7f00:1]/', 'https://localtest.me/', 'https://example.com:8443/', 'https://user:pw@example.com/', 'file:///etc/passwd', 'bukan url'])(
     '%s tidak diambil',
     async (url) => {
       await expect(safeFetch(url)).rejects.toBeInstanceOf(FetchRefused);

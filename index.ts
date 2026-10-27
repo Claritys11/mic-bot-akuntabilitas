@@ -10,7 +10,9 @@ import { connectDb, disconnectDb } from './src/db/connect.ts';
 import { recordStartup } from './src/db/health.ts';
 import { recordLlmCall } from './src/db/llmUsage.ts';
 import { OpenRouterProvider } from './src/llm/openrouter.ts';
+import { startFeedJob } from './src/jobs/feeds.ts';
 import { startScheduler } from './src/scheduler/index.ts';
+import { webReader } from './src/tools/reader.ts';
 
 const config = loadConfig();
 const discord = discordOptions(config);
@@ -28,7 +30,7 @@ const llm = OpenRouterProvider.fromConfig(config);
 llm.onCall((r) => recordLlmCall(r));
 console.log(`[llm] ${llm.enabled ? `aktif → ${config.llm.text.baseUrl} (${config.llm.text.model})` : 'nonaktif — deteksi janji pakai heuristik'}`);
 
-const core = createCore(llm);
+const core = createCore(llm, { reader: webReader });
 const senders: Partial<Record<Platform, Sender>> = {};
 const stops: (() => Promise<void>)[] = [];
 
@@ -85,10 +87,12 @@ const alertOperator = (text: string) => {
 const down = await recordStartup();
 if (down) alertOperator(`⚠️ MIC-Bot sempat mati ±${down.minutes} menit (sejak ${down.from.toISOString()}). Kalau sedang pilot, catat ini — data di rentang itu tidak lengkap.`);
 const stopScheduler = startScheduler(core, router, undefined, alertOperator);
+const stopFeeds = startFeedJob(llm, webReader, config.lombaFeeds);
 
 const shutdown = async (signal: string) => {
   console.log(`[app] ${signal}, mematikan...`);
   stopScheduler();
+  stopFeeds();
   for (const stop of stops) await stop().catch(() => undefined);
   await disconnectDb();
   process.exit(0);

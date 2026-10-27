@@ -4,7 +4,8 @@ import { answerQuestion } from './chat/ask.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
-import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps/service.ts';
+import type { PageReader } from './opps/importer.ts';
+import { collectOppPosts, handleOppAction, handleOppLink, lombaList, lombaTambah } from './opps/service.ts';
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { collectFollowUps, collectNudges, collectWeeklyDigests } from './followup/service.ts';
@@ -34,7 +35,12 @@ const cleanOptions = (o: Record<string, OptionValue | undefined>) =>
 
 const fail = (text: string): Reply => ({ reply: { text, private: true } });
 
-export function createCore(llm: LLMProvider): Core {
+export interface CoreDeps {
+  /** Pembaca halaman/feed web (aman SSRF). Tanpa ini, fitur ambil data lomba dari link nonaktif. */
+  reader?: PageReader;
+}
+
+export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
   const platformOps = new Map<Platform, PlatformOps>();
   const opsFor = (p: Platform) => platformOps.get(p) ?? {};
 
@@ -92,7 +98,7 @@ export function createCore(llm: LLMProvider): Core {
     'data.hapus-anggota': dataHapusAnggota,
     'data.hapus-kelas': dataHapusKelas,
     'lomba.list': lombaList,
-    'lomba.tambah': lombaTambah,
+    'lomba.tambah': (cmd) => lombaTambah(cmd, llm, deps.reader),
   };
 
   return {
@@ -127,6 +133,9 @@ export function createCore(llm: LLMProvider): Core {
       // "@MIC ingetin aku besok jam 7 …" → pengingat pribadi/kelas.
       const remind = await handleReminderRequest(msg, group);
       if (remind) return remind;
+      // "@MIC ada lomba nih https://…" → baca halamannya jadi draf info lomba.
+      const oppLink = await handleOppLink(llm, deps.reader, msg, group);
+      if (oppLink) return oppLink;
       // "jadi dong" untuk janji yang baru ditanya → konfirmasi tanpa klik.
       const typed = await handleTypedConfirmation(msg, group);
       if (typed) return typed;

@@ -312,3 +312,7 @@ ReminderSchema.index({ sentAt: 1, cancelled: 1, at: 1 });
 ReminderSchema.index({ at: 1 }, { expireAfterSeconds: 30 * 24 * 3600 });
 export const ReminderModel = mongoose.model('Reminder', ReminderSchema);
 export type ReminderDoc = InferSchemaType<typeof ReminderSchema> & { _id: mongoose.Types.ObjectId };
+
+// ---------- Jadwal tugas berkala (mis. ambil feed lomba harian) ----------
+const JobRunSchema = new Schema({ _id: { type: String }, lastRunAt: { type: Date, required: true }, note: { type: String, default: '' } });
+export const JobRunModel = mongoose.model('JobRun', JobRunSchema);
