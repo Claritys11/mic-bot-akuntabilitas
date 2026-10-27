@@ -240,7 +240,10 @@ export const OpportunityModel = mongoose.model('Opportunity', OpportunitySchema)
 export type OpportunityDoc = InferSchemaType<typeof OpportunitySchema> & { _id: mongoose.Types.ObjectId };
 
 // Item feed yang sudah pernah dibaca (supaya tidak dibaca ulang tiap hari).
-const FeedItemSchema = new Schema({ url: { type: String, required: true, unique: true }, feed: String, accepted: Boolean, seenAt: { type: Date, default: Date.now } });
+// scope = 'global' (sumber katalog) atau groupId (sumber custom kelas) — dedup per lingkup supaya sumber
+// custom satu kelas tidak bisa "menghabiskan" item untuk kelas lain / global.
+const FeedItemSchema = new Schema({ scope: { type: String, required: true, default: 'global' }, url: { type: String, required: true }, feed: String, accepted: Boolean, seenAt: { type: Date, default: Date.now } });
+FeedItemSchema.index({ scope: 1, url: 1 }, { unique: true });
 FeedItemSchema.index({ seenAt: 1 }, { expireAfterSeconds: 180 * 24 * 3600 });
 export const FeedItemModel = mongoose.model('FeedItem', FeedItemSchema);
 

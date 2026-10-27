@@ -159,7 +159,16 @@ export const FEED_ITEMS_PER_RUN = 5;
  * Baca feed RSS/Atom → halaman item baru → ekstrak → simpan sebagai info lomba global (semua kelas,
  * tetap disaring relevansi jurusan). Item yang sudah pernah dibaca dilewati.
  */
+let legacyIndexDropped = false;
+
 export async function importFeeds(llm: LLMProvider, reader: PageReader, targets: FeedTarget[], now: Date): Promise<{ read: number; added: string[] }> {
+  if (!legacyIndexDropped) {
+    // Indeks lama (url unik global) bentrok dengan dedup per lingkup.
+    await FeedItemModel.collection.dropIndex('url_1').catch(() => undefined);
+    legacyIndexDropped = true;
+  }
+  // Sumber global dulu, baru sumber custom kelas.
+  targets = [...targets].sort((a, b) => Number(a.groupId !== null) - Number(b.groupId !== null));
   const added: string[] = [];
   let read = 0;
   for (const t of targets) {
@@ -170,7 +179,8 @@ export async function importFeeds(llm: LLMProvider, reader: PageReader, targets:
       console.warn(`[lomba] feed ${t.url} gagal: ${(err as Error).message}`);
       continue;
     }
-    const seen = new Set((await FeedItemModel.find({ url: { $in: items.map((i) => i.link) } }, { url: 1 }).lean()).map((s) => s.url));
+    const scope = t.groupId ?? 'global';
+    const seen = new Set((await FeedItemModel.find({ scope, url: { $in: items.map((i) => i.link) } }, { url: 1 }).lean()).map((s) => s.url));
     const host = new URL(t.url).hostname.replace(/^www\./, '');
     for (const item of items.filter((i) => !seen.has(i.link)).slice(0, FEED_ITEMS_PER_RUN)) {
       read++;
@@ -179,7 +189,8 @@ export async function importFeeds(llm: LLMProvider, reader: PageReader, targets:
         const page = await reader.page(item.link);
         const r = await extractFromPage(llm, { ...page, text: `${item.summary}\n${page.text}`.slice(0, 12_000) }, now);
         // Data feed hanya MENAMBAH: lomba yang sudah ada (link/judul sama) tidak pernah ditimpa isi dari internet.
-        if (r.ok && !(await OpportunityModel.exists({ $or: [{ link: r.data.link }, { groupId: t.groupId, title: r.data.title }] }))) {
+        // Cek duplikat hanya dalam lingkup yang sama — info kelas lain tidak memblokir info global / kelas ini.
+        if (r.ok && !(await OpportunityModel.exists({ groupId: t.groupId, $or: [{ link: r.data.link }, { title: r.data.title }] }))) {
           const res = await OpportunityModel.updateOne(
             { link: r.data.link, groupId: t.groupId },
             { $setOnInsert: { ...r.data, groupId: t.groupId, sourceId: t.sourceId, addedBy: `feed:${host}`, source: `feed:${host}`, draft: false, sponsored: false } },
@@ -193,7 +204,7 @@ export async function importFeeds(llm: LLMProvider, reader: PageReader, targets:
       } catch (err) {
         console.warn(`[lomba] item ${item.link} gagal: ${(err as Error).message}`);
       }
-      await FeedItemModel.updateOne({ url: item.link }, { $set: { feed: t.url, accepted, seenAt: now } }, { upsert: true });
+      await FeedItemModel.updateOne({ scope, url: item.link }, { $set: { feed: t.url, accepted, seenAt: now } }, { upsert: true });
     }
   }
   return { read, added };

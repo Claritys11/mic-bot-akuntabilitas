@@ -27,7 +27,22 @@ export interface DeleteReport {
  * namanya dianonimkan — satu-satunya pengecualian aturan append-only, lewat driver langsung.
  */
 
+/**
+ * Data lama tanpa subjectId: hapus nama sebagai kata utuh (bukan potongan kata), hanya untuk nama ≥ 3 huruf.
+ * Catatan buku kas lama "dicatat <nama>" / "tunai, diterima <nama>" juga dibersihkan.
+ */
+async function scrubLegacy(groupId: string, name: string): Promise<void> {
+  if (name.trim().length < 3) return;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const whole = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'gu');
+  const rows = await AuditModel.find({ groupId, subjectId: null, detail: { $regex: escaped } }, { detail: 1 }).lean();
+  const once = new RegExp(whole.source, 'u'); // tanpa flag g: .test() tidak menyimpan posisi antar-baris
+  await Promise.all(rows.filter((r) => once.test(r.detail)).map((r) => AuditModel.updateOne({ _id: r._id }, { $set: { detail: r.detail.replace(whole, DELETED) } })));
+  await TransactionModel.collection.updateMany({ groupId, note: { $in: [`dicatat ${name}`, `tunai, diterima ${name}`] } }, { $set: { note: '' } });
+}
+
 export async function deleteMemberData(platform: string, groupId: string, userId: string): Promise<DeleteReport> {
+  const member = await MemberModel.findOne({ platform, groupId, platformUserId: userId }, { displayName: 1 }).lean();
   const [janji, bukti, buffer, tx] = await Promise.all([
     PromiseModel.deleteMany({ groupId, 'owner.platformUserId': userId }),
     KasProofModel.deleteMany({ groupId, 'member.platformUserId': userId }),
@@ -48,6 +63,8 @@ export async function deleteMemberData(platform: string, groupId: string, userId
     AuditModel.updateMany({ groupId, actorId: userId }, { $set: { actorId: 'deleted', actorName: DELETED } }),
     // Baris yang MEMBICARAKAN anggota ini (dia yang bayar / diberi peran): detailnya dihapus, tindakannya tetap.
     AuditModel.updateMany({ groupId, subjectId: userId }, { $set: { detail: DELETED, subjectId: 'deleted' } }),
+    // Baris lama (sebelum ada subjectId) & catatan buku kas lama yang memuat nama: dibersihkan per kata utuh.
+    ...(member?.displayName ? [scrubLegacy(groupId, member.displayName)] : []),
     // Transaksi yang dia catat sebagai bendahara: pencatat dianonimkan (jumlah tetap).
     TransactionModel.collection.updateMany({ groupId, createdBy: userId }, { $set: { createdBy: 'deleted' } }),
   ]);
