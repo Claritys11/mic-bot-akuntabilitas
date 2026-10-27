@@ -8,6 +8,7 @@ import type { PageReader } from './opps/importer.ts';
 import { collectOppPosts, handleOppAction, handleOppLink, lombaList, lombaTambah } from './opps/service.ts';
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
+import { HELP_WORDS, helpText } from './help.ts';
 import { collectFollowUps, collectNudges, collectWeeklyDigests } from './followup/service.ts';
 import { pilotEkspor, pilotMode } from './pilot/service.ts';
 import { collectReminders, handleReminderAction, handleReminderRequest, ingetinCommand } from './reminders/service.ts';
@@ -80,6 +81,10 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
   }
 
   const commands: Record<string, (cmd: CommandInvocation) => Promise<Reply>> = {
+    bantuan: async (cmd) => {
+      const group = await getGroup(cmd.platform, cmd.groupId);
+      return { reply: { text: helpText({ isAdmin: cmd.isAdmin, kasChannelId: group?.kasChannelId, textCommands: cmd.platform === 'whatsapp' }), private: true } };
+    },
     ping: async () => ({
       reply: { text: `🏓 Pong! Waktu bot: ${formatWIB(now())}${timeScale() !== 1 ? ` (demo ×${timeScale()})` : ''} · LLM ${llm.enabled ? 'aktif' : 'nonaktif (mode heuristik)'}`, private: true },
     }),
@@ -129,6 +134,10 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
       const kasHere = msg.channelId === group.kasChannelId && (group.kasChannelId !== group.mainChannelId || looksLikeKas(msg.text));
       if (kasHere && msg.attachments.length) {
         return handleKasProof(llm, msg, group);
+      }
+      // "@MIC bisa apa aja?" → panduan singkat (jangan diserahkan ke LLM supaya selalu akurat).
+      if (msg.mentionsBot && HELP_WORDS.test(msg.text) && msg.text.length < 80) {
+        return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: helpText({ isAdmin: Boolean(msg.authorIsAdmin), kasChannelId: group.kasChannelId, textCommands: msg.platform === 'whatsapp' }) }];
       }
       // "@MIC ingetin aku besok jam 7 …" → pengingat pribadi/kelas.
       const remind = await handleReminderRequest(msg, group);

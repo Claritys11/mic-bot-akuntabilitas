@@ -38,6 +38,26 @@ Detail tiap milestone dan checklist-nya ada di [`PLAN.md`](PLAN.md) dan tab **Mi
 Bun · TypeScript strict · discord.js v14 · MongoDB + Mongoose · zod · OpenRouter (default
 `z-ai/glm-5.3-flash`) · Docker Compose
 
+## Cara pakai dalam 1 menit
+
+**Pengurus (sekali saja):** undang bot → bot menyapa dan mewawancarai (nama kelas, jurusan, gaya bahasa,
+channel, iuran kas, bendahara, dan **tempat cek bukti kas: DM bendahara atau channel `#tim-inti`** yang
+dicari/dibuatkan otomatis, privat). Selesai — tidak perlu hafal perintah.
+
+**Semua siswa — cukup ngobrol:**
+
+| Ketik di grup | Yang terjadi |
+|---|---|
+| *"aku yang bikin PPT, jumat"* | dicatat & diingatkan H-2 → H-0; kalau lewat, ditanya kabarnya lewat DM |
+| *"ada tugas gak?"* · *"kas aku udah lunas?"* · *"ada lomba ga?"* | dijawab dari catatan |
+| *"@MIC ingetin aku besok jam 7 bawa proyektor"* | diingatkan lewat DM tepat waktunya |
+| foto bukti transfer di channel kas | dicek bendahara di `#tim-inti`, hasilnya dikabari lewat DM |
+| *"@MIC ada lomba nih https://…"* | bot membaca halamannya, pengurus tinggal klik 💾 Simpan |
+| *"@MIC bisa apa aja?"* atau `/bantuan` | panduan singkat |
+
+Bot juga bertindak seperti teman: menanyakan lagi janji yang belum dijawab, mengirim rangkuman Senin pagi,
+dan mengambil info lomba/beasiswa baru dari internet setiap hari.
+
 ## Fitur yang sudah jalan
 
 | Fitur | Cara pakai |
@@ -48,7 +68,10 @@ Bun · TypeScript strict · discord.js v14 · MongoDB + Mongoose · zod · OpenR
 | Janji & rapor | `/janji list`, `/janji selesai`, `/rapor-kelas` (skor di level kelas saja) |
 | Kas kelas | `/kas atur`, kirim foto bukti di channel kas → cek duplikat/nominal/tanggal → bendahara ✅/❌, `/kas rekap`, `/kas ekspor` (CSV) |
 | Rangkuman | `/rangkum jam:3` (pesan mentah disimpan maks. 48 jam, TTL index) |
-| Info lomba | maks. 2 posting/minggu sesuai jurusan, tombol 👥 *Bentuk tim* → thread + janji awal, `/lomba list`, `/lomba tambah` |
+| Info lomba | maks. 2 posting/minggu sesuai jurusan, tombol 👥 *Bentuk tim* → thread + janji awal, `/lomba list`, `/lomba tambah link:…` (dibaca otomatis) |
+| Data lomba otomatis | feed RSS harian (`LOMBA_FEEDS`, default lombasma.com & indbeasiswa.com) + link yang ditempel; AI menyaring lomba/beasiswa SMA/SMK yang masih buka; `bun run lomba:ambil` |
+| Bendahara & tim inti | `/kas atur cek_bukti:dm\|channel`, `tambah_tim`/`hapus_tim`; channel `#tim-inti` dicari/dibuatkan privat |
+| Pengingat & tindak lanjut | `@MIC ingetin …` / `/ingetin`, tanya ulang janji yang belum dijawab, tanya kabar setelah lewat deadline, rangkuman Senin |
 | Nimbrung & suasana | bot menanggapi janji seperti teman sekelas, menyesuaikan nada (santai/serius/tegang/sedih) |
 | Tanya jawab | *"ada tugas gak nih?"*, *"kas aku udah lunas?"*, *"ada lomba ga?"* — dijawab dari data, tanpa perlu tag |
 | Konfirmasi ketik | balas *"jadi dong, besok"* / *"ga jadi"* selain lewat tombol |

@@ -185,18 +185,3 @@ function usage(spec: CommandSpec, name: string): string {
   const opts = (sub ? sub.options : spec.options) ?? [];
   return `/${name.replace('.', ' ')} ${opts.filter((o) => o.type !== 'channel').map((o) => (o.required ? `<${o.name}>` : `[${o.name}]`)).join(' ')}`.trim();
 }
-
-/** Daftar perintah teks untuk "/bantuan". */
-export function helpText(specs: CommandSpec[]): string {
-  const lines: string[] = [];
-  for (const s of specs) {
-    if (s.subcommands?.length) for (const sub of s.subcommands) lines.push(`• ${usage(s, `${s.name}.${sub.name}`)} — ${sub.description}`);
-    else lines.push(`• ${usage(s, s.name)} — ${s.description}`);
-  }
-  return (
-    '*Cara pakai MIC-Bot di WhatsApp* 🤖\n' +
-    'Paling gampang: ngobrol biasa aja. Bilang _"aku yang bikin PPT, Jumat"_ dan aku catat janjinya; tanya _"ada tugas gak?"_ dan aku jawab.\n' +
-    'Bayar kas? Kirim foto bukti transfer ke chat pribadi aku, atau di grup dengan keterangan _kas_.\n\n' +
-    `*Perintah cadangan:*\n${lines.join('\n')}`
-  );
-}

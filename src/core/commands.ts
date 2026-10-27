@@ -26,6 +26,7 @@ const TUTUR = [
 ];
 
 export const COMMANDS: CommandSpec[] = [
+  { name: 'bantuan', description: 'Cara pakai MIC-Bot (singkat)' },
   { name: 'ping', description: 'Cek bot hidup' },
   {
     name: 'setup',

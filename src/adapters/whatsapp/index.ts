@@ -17,7 +17,7 @@ import { addMissingMembers, groupsOfMember } from '../../core/groups.ts';
 import type { Core } from '../../core/index.ts';
 import { mention, type Attachment, type Context, type IncomingMessage, type Member, type MessageBody, type OutgoingMessage, type Reply, type Sender } from '../../core/types.ts';
 import { MemberModel, WaPromptModel, type WaPromptDoc } from '../../db/models.ts';
-import { helpText, jidUser, matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa } from './format.ts';
+import { jidUser, matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa } from './format.ts';
 
 // Adapter WhatsApp lewat Baileys (WhatsApp Web multi-device, tidak resmi).
 // Satu grup WhatsApp = satu kelas: groupId = channelId = JID grup. Chat pribadi ke bot dipetakan ke
@@ -324,9 +324,10 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
     }
 
     // 2) Perintah teks ("/janji list", "/bantuan").
-    if (/^[/!](bantuan|help|menu)\b/i.test(text)) return void (await sendBody(chatId, { text: helpText(COMMANDS) }, { groupId, quoteId: m.key.id }));
+    // "/help" & "/menu" = alias "/bantuan" (ditangani core seperti perintah lain).
+    const commandText = text.replace(/^([/!])(help|menu)\b/i, '$1bantuan');
     const mentioned = (info?.mentionedJid ?? []).map((j) => jidNormalizedUser(j)).filter((j) => !isBot(j));
-    const cmd = parseCommand(text, COMMANDS, (tok) => (tok.startsWith('@') ? mentioned.find((j) => jidUser(j) === tok.slice(1)) : undefined));
+    const cmd = parseCommand(commandText, COMMANDS, (tok) => (tok.startsWith('@') ? mentioned.find((j) => jidUser(j) === tok.slice(1)) : undefined));
     if (cmd) {
       if ('error' in cmd) return void (await sendBody(chatId, { text: `⚠️ ${cmd.error}` }, { groupId, quoteId: m.key.id }));
       const r = await core.onCommand({ ...base, name: cmd.name, options: cmd.options });

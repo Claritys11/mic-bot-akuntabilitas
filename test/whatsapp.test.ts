@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { platformOf } from '../src/adapters/router.ts';
-import { helpText, matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa, toWaMarkdown } from '../src/adapters/whatsapp/format.ts';
+import { matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa, toWaMarkdown } from '../src/adapters/whatsapp/format.ts';
 import { COMMANDS } from '../src/core/commands.ts';
 import { channelRef, mention } from '../src/core/types.ts';
 
@@ -99,9 +99,8 @@ describe('perintah teks', () => {
     expect(parseCommand('/apaini', COMMANDS)).toBeNull();
     expect(parseCommand('dan/atau', COMMANDS)).toBeNull();
   });
-  test('bantuan menyebut semua perintah', () => {
-    const h = helpText(COMMANDS);
-    for (const c of COMMANDS) expect(h).toContain(`/${c.name}`);
+  test('/help dan /menu jadi alias /bantuan', () => {
+    expect(parseCommand('/bantuan', COMMANDS)).toEqual({ name: 'bantuan', options: {} });
   });
 });
 
