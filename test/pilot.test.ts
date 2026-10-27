@@ -35,3 +35,17 @@ describe('metrik pilot', () => {
     expect(m.falseActivationPct).toBeNull();
   });
 });
+
+describe('ekspor CSV pilot', () => {
+  test('kolom cek ketua kosong & nama berbahaya dinetralkan', async () => {
+    const { promisesCsv } = await import('../src/core/pilot/service.ts');
+    const csv = promisesCsv([
+      { task: 'bikin PPT', owner: { platformUserId: 'u1', displayName: '=HACK()' }, deadline: d('2026-11-05T13:00:00Z'), status: 'done', doneAt: d('2026-11-05T10:00:00Z'), shadow: true, autoActivated: false, createdAt: d('2026-11-01T03:00:00Z') },
+    ]);
+    const [head, row] = csv.split('\n');
+    expect(head).toContain('dicek_ketua_ditepati');
+    expect(row).toContain("'=HACK()");
+    expect(row).toContain(',diam,tidak,');
+    expect(row!.endsWith(',')).toBe(true);
+  });
+});

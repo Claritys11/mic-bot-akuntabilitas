@@ -7,6 +7,7 @@ import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboardin
 import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps/service.ts';
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
+import { pilotEkspor, pilotMode } from './pilot/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
 import { channelRef, sanitize, type ActionEvent, type Member, type OptionValue, type CommandInvocation, type FormSubmit, type IncomingMessage, type JoinEvent, type OutgoingMessage, type Platform, type PlatformOps, type Reply, type SpeechLevel } from './types.ts';
@@ -80,6 +81,8 @@ export function createCore(llm: LLMProvider): Core {
     'kas.rekap': kasRekap,
     'kas.ekspor': kasEkspor,
     rangkum: (cmd) => rangkum(llm, cmd),
+    'pilot.mode': pilotMode,
+    'pilot.ekspor': pilotEkspor,
     'lomba.list': lombaList,
     'lomba.tambah': lombaTambah,
   };
@@ -98,6 +101,11 @@ export function createCore(llm: LLMProvider): Core {
       if (onboarding) return onboarding;
       if (!group) return [];
       await Promise.all([upsertMember(msg.author), bufferMessage(msg)]);
+      // Mode pilot "diam" (baseline): catat janji tanpa membalas apa pun.
+      if (group.pilotMode === 'diam') {
+        await detectPromise(llm, msg, group);
+        return [];
+      }
       // Kalau channel kas = channel utama (WhatsApp: satu grup), hanya foto berketerangan kas yang dibaca —
       // foto/meme biasa tidak dikirim ke LLM.
       const kasHere = msg.channelId === group.kasChannelId && (group.kasChannelId !== group.mainChannelId || looksLikeKas(msg.text));

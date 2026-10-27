@@ -92,6 +92,13 @@ export function overduePrivateText(level: SpeechLevel, vars: { nama: string; tug
   return fill(pick(OVERDUE_PRIVATE[level], seed), vars);
 }
 
+/** Pengganti pengingat pribadi saat DM tertutup: tidak menyebut tugas, nominal, atau status telat. */
+export const PRIVATE_FALLBACK: Record<SpeechLevel, (nama: string) => string> = {
+  santai: (nama) => `${nama}, ada pengingat pribadi dari aku tapi DM-mu tertutup 🙏 Buka DM dari anggota server biar bisa ku kirim ya.`,
+  sopan: (nama) => `${nama}, ada pengingat pribadi untuk Anda, tetapi DM tertutup 🙏 Mohon izinkan DM dari anggota server.`,
+  krama: (nama) => `Nuwun sewu ${nama}, wonten pangengetan pribadi nanging DM panjenengan katutup 🙏 Mangga dipunbikak.`,
+};
+
 export type KasStage = 'mid' | 'end';
 
 export const KAS_TEMPLATES: Record<SpeechLevel, Record<KasStage, string[]>> = {

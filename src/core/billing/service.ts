@@ -4,7 +4,7 @@ import { LABELS } from '../promises/voice.ts';
 import { formatWIB } from '../time.ts';
 import { mention, type OutgoingMessage, type Platform, type SpeechLevel } from '../types.ts';
 import { nextStage, type Stage } from './escalation.ts';
-import { billingText, overduePrivateText } from './templates.ts';
+import { billingText, overduePrivateText, PRIVATE_FALLBACK } from './templates.ts';
 
 const STAGE_TITLE: Record<Stage, string> = {
   h2: '🔔 Pengingat janji (H-2)',
@@ -20,6 +20,7 @@ const STAGE_TITLE: Record<Stage, string> = {
 export async function collectPromiseReminders(at: Date): Promise<OutgoingMessage[]> {
   const candidates = await PromiseModel.find({
     status: 'active',
+    shadow: { $ne: true },
     deadline: { $ne: null, $lte: new Date(at.getTime() + 48 * 3600_000) },
     stage: { $ne: 'overdue' },
   })
@@ -57,7 +58,7 @@ export async function collectPromiseReminders(at: Date): Promise<OutgoingMessage
     out.push(
       stage === 'overdue' && !unconfirmedAuto
         ? { to: { kind: 'channel', channelId: p.channelId }, text, card, actions }
-        : { to: { kind: 'dm', member: owner, fallbackChannelId: p.channelId }, text, card, actions },
+        : { to: { kind: 'dm', member: owner, fallbackChannelId: p.channelId, ...(unconfirmedAuto ? { fallbackText: PRIVATE_FALLBACK[level](mention(p.owner)) } : {}) }, text, card, actions },
     );
   }
   return out;

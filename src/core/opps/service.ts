@@ -53,7 +53,7 @@ function oppCard(o: OpportunityDoc): Card {
 export async function collectOppPosts(at: Date): Promise<OutgoingMessage[]> {
   const hour = wibParts(at).hour;
   if (hour < 7 || hour >= 20) return []; // jangan posting malam hari
-  const groups = await GroupModel.find({ oppsChannelId: { $ne: null } }).lean<GroupDoc[]>();
+  const groups = await GroupModel.find({ oppsChannelId: { $ne: null }, pilotMode: { $ne: 'diam' } }).lean<GroupDoc[]>();
   if (!groups.length) return [];
   const opps = await OpportunityModel.find({ deadline: { $gt: at } }).lean<OpportunityDoc[]>();
   const out: OutgoingMessage[] = [];

@@ -67,6 +67,19 @@ export const COMMANDS: CommandSpec[] = [
     ],
   },
   {
+    name: 'pilot',
+    description: 'Mode pilot (pengurus): baseline diam-diam & ekspor data',
+    adminOnly: true,
+    subcommands: [
+      {
+        name: 'mode',
+        description: 'diam = hanya mencatat janji (baseline), aktif = normal',
+        options: [{ name: 'mode', description: 'Mode bot', type: 'string', required: true, choices: [{ name: 'diam (baseline)', value: 'diam' }, { name: 'aktif', value: 'aktif' }] }],
+      },
+      { name: 'ekspor', description: 'Ekspor janji tercatat (CSV) untuk dicek ketua kelas' },
+    ],
+  },
+  {
     name: 'rangkum',
     description: 'Rangkum obrolan channel ini',
     options: [{ name: 'jam', description: 'Berapa jam terakhir (1–48, default 3)', type: 'integer' }],

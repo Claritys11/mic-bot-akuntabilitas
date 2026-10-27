@@ -8,17 +8,22 @@ Tujuan: menguji asumsi paling berisiko **sebelum** menambah fitur (Fase 2 dibeku
 Kalau jawabannya "tidak", fitur pengaturan secanggih apa pun tidak menolong. Kalau "ya", angka ini
 jadi bukti terkuat di depan juri MIC.
 
-## Desain
+## Desain: kelas sebagai kontrolnya sendiri
 
-| | Kelas pilot | Kelas kontrol |
+Satu kelas lawan satu kelas kontrol dengan ±15 janji tidak bermakna — beda karakter antarkelas lebih
+besar daripada efek bot. Maka satu kelas dibandingkan dengan dirinya sendiri:
+
+| Minggu | Mode bot | Yang terjadi |
 |---|---|---|
-| Jumlah | 1 kelas (± 30–36 siswa) | 1 kelas setingkat, jurusan mirip |
-| Platform | Discord (bot aktif) | grup biasa tanpa bot |
-| Durasi | 2–3 minggu kalender | sama |
-| Pencatatan janji | otomatis oleh bot | ketua/sekretaris mencatat manual di lembar sederhana |
+| 1 | `/pilot mode diam` | Bot hanya **mencatat** janji dari obrolan (tidak membalas, tidak menagih, tidak ada pengingat kas/lomba) → baseline |
+| 2–3 | `/pilot mode aktif` | Bot normal: nimbrung, auto-aktif, menagih bertahap |
 
-Lembar kontrol (Google Sheet): `tugas · pemilik · deadline · tanggal selesai (kosong kalau belum)`.
-Cukup janji kelompok yang disebut di grup — sama dengan yang bot catat di kelas pilot.
+- Janji dari minggu diam disimpan sebagai `shadow` dan **tidak pernah ditagih**, supaya baseline bersih.
+- Akhir tiap fase: `/pilot ekspor` → CSV. Ketua kelas mengecek **sampel acak** (mis. 10 janji) dan mengisi
+  kolom `dicek_ketua_ditepati` (ya/tidak). Tombol "selesai" dari pemilik adalah *self-report*, jadi tidak
+  dipakai sendirian sebagai bukti.
+- Kalau ada kelas kedua yang mau, boleh dijadikan pembanding tambahan, tapi bukan syarat.
+- Laporkan angka apa adanya **beserta ukuran sampel** sebagai *hasil awal*, bukan bukti kausal.
 
 ## Persetujuan & privasi (sebelum mulai)
 
@@ -29,14 +34,14 @@ Cukup janji kelompok yang disebut di grup — sama dengan yang bot catat di kela
 
 ## Metrik
 
-Dihitung dengan `bun run pilot:metrics --dari 2026-11-02 --sampai 2026-11-20`:
+Dihitung dengan `bun run pilot:metrics --dari 2026-11-02 --sampai 2026-11-20` (baseline & aktif dipisah):
 
 | Metrik | Arti | Target awal |
 |---|---|---|
-| Ditepati tepat waktu (%) | selesai ≤ deadline / janji yang jatuh tempo | pilot ≥ kontrol + 15 poin |
-| Rata-rata hari telat | untuk yang selesai terlambat | pilot < kontrol |
-| Janji tercatat | volume yang terlacak | ≥ 15 janji selama pilot |
-| Ditanya tapi tak dikonfirmasi | janji yang "lolos" pelacakan | turun setelah auto-aktif |
+| Janji tercatat | volume yang terlacak selama 3 minggu | 30 (minimum 15) |
+| Ditepati tepat waktu (%) | dari cek sampel ketua: baseline vs aktif | aktif lebih tinggi; laporkan selisih + n |
+| Rata-rata hari telat | untuk yang selesai terlambat | aktif lebih rendah |
+| Ditanya tapi tak dikonfirmasi | janji yang "lolos" pelacakan saat aktif | sekecil mungkin |
 | Salah-aktif (%) | auto-aktif lalu "bukan janjiku" | ≤ 10% |
 | Kas tercatat vs buku kas | bukti disetujui dibanding catatan bendahara | selisih 0 |
 
@@ -55,7 +60,8 @@ ukuran akurasi. Ukuran jujur:
 
 | Minggu | Kegiatan |
 |---|---|
-| 0 | Persetujuan wali, pilih kelas pilot & kontrol, pasang bot, siapkan lembar kontrol |
-| 1–3 | Pilot berjalan; M5 (siap demo) dikerjakan paralel; cek log & salah-aktif tiap 2–3 hari |
-| 3 | Hitung metrik, wawancara 5–10 ketua/bendahara, ukur holdout |
+| 0 | Persetujuan wali, pilih kelas, pasang bot, `/pilot mode diam` |
+| 1 | Baseline (diam); akhir minggu: `/pilot ekspor` + cek sampel ketua; lalu `/pilot mode aktif` |
+| 2–3 | Bot aktif; M5 (siap demo) dikerjakan paralel; cek log & salah-aktif tiap 2–3 hari |
+| 3 | `/pilot ekspor` + cek sampel, `bun run pilot:metrics`, wawancara 5–10 ketua/bendahara, ukur holdout |
 | 4 | Putuskan: lanjut Fase 2 / ubah arah; masukkan angka ke proposal MIC |

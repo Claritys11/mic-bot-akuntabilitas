@@ -16,6 +16,8 @@ const GroupSchema = new Schema(
     mainChannelId: { type: String, required: true },
     kasChannelId: { type: String, default: null },
     oppsChannelId: { type: String, default: null },
+    // Pilot: 'diam' = bot hanya mencatat janji tanpa membalas/menagih (minggu baseline).
+    pilotMode: { type: String, enum: ['off', 'diam'], default: 'off' },
     kas: {
       amount: { type: Number, default: 0 },
       period: { type: String, enum: ['mingguan', 'bulanan'], default: 'bulanan' },
@@ -65,6 +67,8 @@ const PromiseSchema = new Schema(
     // Langsung aktif tanpa klik konfirmasi. Selama pemilik belum pernah menyentuhnya (ownerTouched),
     // tagihan lewat deadline hanya lewat DM dan selalu ada tombol "Bukan janjiku".
     autoActivated: { type: Boolean, default: false },
+    // Dicatat diam-diam saat mode pilot 'diam' (baseline): tidak pernah ditagih.
+    shadow: { type: Boolean, default: false },
     ownerTouched: { type: Boolean, default: false },
   },
   { timestamps: true },

@@ -173,9 +173,9 @@ class DiscordSender implements Sender {
         const user = await this.client.users.fetch(to.member.platformUserId);
         await user.send(payload);
       } catch {
-        // DM tertutup → kirim di channel grup sebagai cadangan.
+        // DM tertutup → kirim di channel grup sebagai cadangan (versi samaran kalau isinya pribadi).
         const ch = await this.channel(to.fallbackChannelId);
-        await ch.send(payload);
+        await ch.send(to.fallbackText ? renderBody({ text: to.fallbackText }) : payload);
       }
       return;
     }

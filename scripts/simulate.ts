@@ -213,5 +213,18 @@ await tick('Tick lagi — sudah 2 minggu ini, tidak posting', '2026-10-31T05:00:
 step('Budi klik 👥 Bentuk tim');
 printReply(await core.onAction({ ...ctx(budi, LOMBA), actionId: actionOf(posts, 'Bentuk tim'), messageId: 'bot5' }));
 
+// ---- M6: pilot mode diam (baseline) ----
+step('/pilot mode diam (Ketua, admin)');
+printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.mode', options: { mode: 'diam' } }));
+step('Budi: "aku yang rangkum bab 4, senin" → mode diam: bot TIDAK membalas, tapi mencatat');
+const silent = await core.onMessage(say(budi, 'aku yang rangkum bab 4, senin'));
+console.log(silent.length ? '  ❌ bot membalas saat diam!' : '  (diam ✓)');
+step('/pilot ekspor');
+const exp = await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.ekspor', options: {} });
+printReply(exp);
+console.log(exp.reply?.file?.content.split('\n').filter((l) => l.includes('rangkum bab 4')).join('\n') || '  ❌ janji diam tidak tercatat');
+step('/pilot mode aktif');
+printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.mode', options: { mode: 'aktif' } }));
+
 console.log(`\nLLM usage: ${JSON.stringify(llm.usage())}`);
 await mongoose.disconnect();

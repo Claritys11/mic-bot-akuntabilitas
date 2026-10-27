@@ -26,7 +26,7 @@ import { asTranscript, recentChat } from '../chat/context.ts';
 import { detectMood, graverMood, type Mood } from '../chat/mood.ts';
 import { parseRelativeDate } from './dateParser.ts';
 import { heuristicExtract, looksLikePromise, type Extraction } from './prefilter.ts';
-import { shouldAutoActivate, similarTask } from './autoActivate.ts';
+import { isRepeatPromise, shouldAutoActivate } from './autoActivate.ts';
 import { acceptLlmLine, askLine, autoLine, cancelledLine, confirmedLine, doneLine, LABELS } from './voice.ts';
 
 const ExtractionSchema = z.object({
@@ -170,10 +170,11 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
   // Janji yang diulang ("iya aku yang bikin PPT kok") tidak dicatat dua kali.
   const open = await PromiseModel.find(
     { groupId: msg.groupId, 'owner.platformUserId': owner.platformUserId, status: { $in: ['pending_confirm', 'active', 'overdue'] }, createdAt: { $gte: new Date(at.getTime() - 14 * 86400_000) } },
-    { task: 1 },
+    { task: 1, deadline: 1 },
   ).lean();
-  if (open.some((o) => similarTask(o.task, result.ex.task))) return [];
+  if (open.some((o) => isRepeatPromise({ task: o.task, deadline: o.deadline ?? null }, { task: result.ex.task, deadline }))) return [];
 
+  const shadow = group.pilotMode === 'diam';
   const auto = shouldAutoActivate({
     source: result.source,
     confidence: result.ex.confidence,
@@ -193,7 +194,10 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
     deadlineText: result.ex.deadlineText ?? null,
     source: result.source,
     ...(auto ? { status: 'active', confirmedAt: at, stage: initialStage(deadline!, at), autoActivated: true } : {}),
+    // Baseline: semua janji yang terdeteksi dicatat aktif tanpa ditanya; tidak pernah ditagih (shadow).
+    ...(shadow ? { status: 'active', confirmedAt: at, shadow: true } : {}),
   });
+  if (shadow) return [];
   const doc = p.toObject() as PromiseDoc;
   const id = String(doc._id);
   if (auto) {

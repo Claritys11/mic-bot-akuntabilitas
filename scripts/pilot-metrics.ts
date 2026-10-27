@@ -1,5 +1,5 @@
 // Metrik pilot per kelas: bun run pilot:metrics [--dari 2026-11-01] [--sampai 2026-11-30]
-// Bandingkan kelas pilot (pakai bot) dengan kelas kontrol yang dicatat manual (lihat docs/PILOT.md).
+// Kelas = kontrolnya sendiri: minggu "diam" (baseline, shadow) vs minggu aktif (lihat docs/PILOT.md).
 import { loadConfig } from '../src/config.ts';
 import { pilotMetrics } from '../src/core/pilot/metrics.ts';
 import { connectDb, disconnectDb } from '../src/db/connect.ts';
@@ -18,11 +18,16 @@ const groups = await GroupModel.find().lean();
 for (const g of groups) {
   const range = { $gte: from, $lte: to };
   const [promises, proofs] = await Promise.all([
-    PromiseModel.find({ groupId: g.groupId, createdAt: range }, { status: 1, deadline: 1, doneAt: 1, createdAt: 1, autoActivated: 1, ownerTouched: 1 }).lean(),
+    PromiseModel.find({ groupId: g.groupId, createdAt: range }, { status: 1, deadline: 1, doneAt: 1, createdAt: 1, autoActivated: 1, ownerTouched: 1, shadow: 1 }).lean(),
     KasProofModel.find({ groupId: g.groupId, createdAt: range }, { status: 1, nominal: 1, flags: 1 }).lean(),
   ]);
-  const m = pilotMetrics(promises as never, proofs as never, now);
+  const baseline = promises.filter((p) => p.shadow);
+  const m = pilotMetrics(promises.filter((p) => !p.shadow) as never, proofs as never, now);
   console.log(`\n${g.className} (${g.platform})`);
+  if (baseline.length) {
+    console.log(`  BASELINE (mode diam): ${baseline.length} janji tercatat — ketepatannya dari kolom cek ketua di /pilot ekspor (bot tidak menanyakan "selesai" saat diam)`);
+  }
+  console.log('  MODE AKTIF:');
   console.log(`  janji tercatat ${m.recorded} · jatuh tempo ${m.due} · tepat ${m.onTime} · telat ${m.late} · lewat ${m.missed}`);
   console.log(`  ditepati tepat waktu: ${m.keptPct ?? '—'}% · rata-rata telat: ${m.avgDaysLate ?? '—'} hari · ditanya tapi tak dikonfirmasi: ${m.neverConfirmed}`);
   console.log(`  auto-aktif ${m.autoActivated} · salah-aktif ${m.falseActivations} (${m.falseActivationPct ?? '—'}%)`);

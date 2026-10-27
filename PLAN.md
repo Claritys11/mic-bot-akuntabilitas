@@ -63,8 +63,9 @@ Versi demo: kurasi, bukan scraper.
 ## M6 — Pilot & validasi ★ sekarang prioritas (lihat docs/PILOT.md)
 - [x] Rencana pilot + kelas kontrol + metrik (`docs/PILOT.md`, `bun run pilot:metrics`)
 - [x] Janji auto-aktif + pencatatan salah-aktif (`autoActivated`, `ownerTouched`)
-- [ ] Persetujuan wali murid & pilih kelas pilot/kontrol
-- [ ] Pasang di kelas pilot 2–3 minggu; kontrol dicatat manual
+- [x] Mode diam untuk baseline (`/pilot mode diam|aktif`) + `/pilot ekspor` dengan kolom cek ketua
+- [ ] Persetujuan wali murid & pilih kelas pilot
+- [ ] Minggu 1 diam (baseline) → minggu 2–3 aktif; ketua cek sampel acak tiap akhir fase
 - [ ] Holdout berlabel dari chat asli (anonim) → precision/recall deteksi janji
 - [ ] Survei singkat + wawancara 5–10 ketua/bendahara
 

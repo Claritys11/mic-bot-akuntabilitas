@@ -65,7 +65,16 @@ export interface FileOut {
 
 export type Target =
   | { kind: 'channel'; channelId: string; replyTo?: string }
-  | { kind: 'dm'; member: Member; fallbackChannelId: string }
+  | {
+      kind: 'dm';
+      member: Member;
+      fallbackChannelId: string;
+      /**
+       * Kalau DM gagal (ditutup), kirim HANYA teks ini ke channel — tanpa isi pesan aslinya.
+       * Dipakai untuk pengingat yang tidak boleh terlihat kelas (kas, janji yang belum diakui).
+       */
+      fallbackText?: string;
+    }
   /** Buat (atau pakai) thread dari sebuah pesan, lalu kirim ke dalamnya. */
   | { kind: 'thread'; channelId: string; anchorMessageId: string; name: string };
 

@@ -24,16 +24,29 @@ const words = (s: string) =>
       .toLowerCase()
       .replace(/[^\p{L}\p{N}\s]/gu, ' ')
       .split(/\s+/)
-      .filter((w) => w.length > 1 && !STOP.has(w)),
+      .filter((w) => (w.length > 1 || /\d/.test(w)) && !STOP.has(w)),
   );
 
-/** "bikin PPT" ≈ "bikin ppt presentasi" → janji yang diulang tidak dicatat dua kali. */
+const numbers = (s: Set<string>) => [...s].filter((w) => /\d/.test(w)).sort().join(',');
+
+/**
+ * "bikin PPT" ≈ "bikin ppt presentasi" → janji yang diulang tidak dicatat dua kali.
+ * Angka berbeda = tugas berbeda ("PPT bab 1" ≠ "PPT bab 2").
+ */
 export function similarTask(a: string, b: string): boolean {
   const x = words(a);
   const y = words(b);
   if (!x.size || !y.size) return false;
+  if (numbers(x) !== numbers(y)) return false;
   let both = 0;
   for (const w of x) if (y.has(w)) both++;
   const small = Math.min(x.size, y.size);
   return both / small >= 0.75 || both / (x.size + y.size - both) >= 0.5;
+}
+
+/** Janji ulang = tugas mirip DAN deadline di hari yang sama (atau dua-duanya belum punya deadline). */
+export function isRepeatPromise(a: { task: string; deadline: Date | null }, b: { task: string; deadline: Date | null }): boolean {
+  if (!similarTask(a.task, b.task)) return false;
+  if (!a.deadline || !b.deadline) return !a.deadline && !b.deadline;
+  return Math.abs(a.deadline.getTime() - b.deadline.getTime()) < 24 * 3600_000;
 }

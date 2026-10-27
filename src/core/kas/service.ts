@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { GroupModel, KasProofModel, KasReminderModel, TransactionModel, type GroupDoc } from '../../db/models.ts';
 import { kasProofPrompt } from '../../llm/prompts/kasProof.ts';
 import { visionJson, type LLMProvider } from '../../llm/provider.ts';
-import { kasText, type KasStage } from '../billing/templates.ts';
+import { kasText, PRIVATE_FALLBACK, type KasStage } from '../billing/templates.ts';
 import { getGroup, listMembers, NOT_SETUP_TEXT } from '../groups.ts';
 import { formatWIB, now } from '../time.ts';
 import {
@@ -377,7 +377,7 @@ function kasStageDue(period: string, at: Date): KasStage | null {
 }
 
 export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> {
-  const groups = await GroupModel.find({ 'kas.amount': { $gt: 0 } }).lean<GroupDoc[]>();
+  const groups = await GroupModel.find({ 'kas.amount': { $gt: 0 }, pilotMode: { $ne: 'diam' } }).lean<GroupDoc[]>();
   const out: OutgoingMessage[] = [];
   for (const g of groups) {
     const kasPeriod = g.kas!.period as KasPeriod;
@@ -399,7 +399,8 @@ export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> 
         { nama: mention(member), periode: periodLabel(period), nominal: rupiah(g.kas!.amount! - u.paidAmount) },
         `${g.groupId}:${period}:${u.id}:${stage}`,
       );
-      out.push({ to: { kind: 'dm', member, fallbackChannelId: g.kasChannelId ?? g.mainChannelId }, text });
+      // DM tertutup → jangan umumkan siapa yang belum bayar & berapa di channel.
+      out.push({ to: { kind: 'dm', member, fallbackChannelId: g.kasChannelId ?? g.mainChannelId, fallbackText: PRIVATE_FALLBACK[g.speechLevel as SpeechLevel](mention(member)) }, text });
     }
   }
   return out;

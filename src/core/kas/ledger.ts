@@ -110,7 +110,7 @@ export function paidStatus(
   return { paid, unpaid };
 }
 
-const csvCell = (v: string | number) => {
+export const csvCell = (v: string | number) => {
   let s = String(v);
   // Cegah formula injection saat dibuka di Excel/Sheets (nama anggota bisa diawali "=").
   if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;

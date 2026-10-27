@@ -180,7 +180,7 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
           await sendBody(to.member.platformUserId, msg, { groupId: to.member.groupId });
         } catch (err) {
           console.warn('[whatsapp] DM gagal, kirim ke grup:', (err as Error).message);
-          await sendBody(to.fallbackChannelId, msg, { groupId: groupOfTarget(to.fallbackChannelId, to.member.groupId) });
+          await sendBody(to.fallbackChannelId, to.fallbackText ? { text: to.fallbackText } : msg, { groupId: groupOfTarget(to.fallbackChannelId, to.member.groupId) });
         }
       } else {
         // Tidak ada thread di WhatsApp → balas pesan jangkarnya di grup.
