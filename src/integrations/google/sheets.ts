@@ -1,6 +1,6 @@
 import { createSign } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import type { SheetTab } from '../../core/kas/sheet.ts';
+import { MARKER_LABEL, type SheetTab } from '../../core/kas/sheet.ts';
 
 // Google Sheets lewat akun layanan (service account) — tanpa library googleapis yang besar.
 // Alur: JWT ditandatangani kunci privat akun layanan → token akses (1 jam) → REST API Sheets v4.
@@ -82,10 +82,14 @@ export class SheetsClient {
   }
 
   /** Cek akses → judul spreadsheet. 403/404 = belum dibagikan ke akun layanan / link salah. */
-  async check(spreadsheetId: string): Promise<{ ok: true; title: string } | { ok: false; reason: string }> {
+  async check(spreadsheetId: string): Promise<{ ok: true; title: string; marker: string | null } | { ok: false; reason: string }> {
     try {
-      const r = await this.call<{ properties: { title: string } }>(`${encodeURIComponent(spreadsheetId)}?fields=properties.title`);
-      return { ok: true, title: r.properties.title };
+      const id = encodeURIComponent(spreadsheetId);
+      const r = await this.call<{ properties: { title: string } }>(`${id}?fields=properties.title`);
+      // Penanda kelas di tab Ringkasan (kalau tab belum ada → belum pernah diisi bot).
+      const values = await this.call<{ values?: string[][] }>(`${id}/values/${encodeURIComponent("'Ringkasan'!A1:B40")}`).catch(() => ({ values: [] as string[][] }));
+      const row = (values.values ?? []).find((v) => v[0] === MARKER_LABEL);
+      return { ok: true, title: r.properties.title, marker: row?.[1] ?? null };
     } catch (err) {
       const status = err instanceof SheetsError ? err.status : 0;
       if (status === 403) return { ok: false, reason: `belum dibagikan ke ${this.serviceEmail} sebagai Editor` };

@@ -24,7 +24,7 @@ import {
   type SpeechLevel,
 } from '../types.ts';
 import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
-import { spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
+import { sheetMarker, spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
@@ -523,6 +523,12 @@ export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway)
   if (!id) return { reply: { text: 'Itu bukan link Google Sheets. Contoh: https://docs.google.com/spreadsheets/d/…/edit', private: true } };
   const check = await sheets.check(id);
   if (!check.ok) return { reply: { text: `Belum bisa dibuka: ${check.reason}.\n\n${SHEET_HELP(sheets.serviceEmail)}`, private: true } };
+  // Jangan sampai laporan kelas lain tertimpa: sheet hanya untuk satu kelas.
+  const mine = sheetMarker(cmd.platform, cmd.groupId);
+  const taken = await GroupModel.exists({ 'kas.sheetId': id, _id: { $ne: group._id } });
+  if (taken || (check.marker && check.marker !== mine)) {
+    return { reply: { text: 'Sheet ini sudah dipakai untuk laporan kas kelas lain. Buat Google Sheet baru khusus kelas ini ya.', private: true } };
+  }
   await GroupModel.updateOne(
     { _id: group._id },
     { $set: { 'kas.sheetId': id, 'kas.sheetTitle': check.title.slice(0, 100), 'kas.sheetDirtyAt': new Date(), 'kas.sheetSyncedAt': null, 'kas.sheetError': null } },

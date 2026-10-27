@@ -8,6 +8,7 @@ const e = (p: Partial<LedgerEntry>): LedgerEntry => ({ id: 'x', memberId: 'a', m
 describe('isi Google Sheet kas', () => {
   const tabs = buildKasSheet({
     className: 'XI RPL 1',
+    marker: 'MIC-ABC',
     amount: 10000,
     period: 'bulanan',
     now: d('2026-10-27T13:00:00Z'),
@@ -47,6 +48,14 @@ describe('isi Google Sheet kas', () => {
   });
   test('bukti: status & catatan otomatis', () => {
     expect(tab('Bukti Transfer')[1]).toEqual(['2026-10-05 09:00', 'Ani', 10000, 'Oktober 2026', 'Disetujui', '[recipient_mismatch]']);
+  });
+});
+
+describe('penanda kelas di sheet', () => {
+  test('stabil & berbeda antar kelas', async () => {
+    const { sheetMarker } = await import('../src/core/kas/sheet.ts');
+    expect(sheetMarker('discord', '1')).toBe(sheetMarker('discord', '1'));
+    expect(sheetMarker('discord', '1')).not.toBe(sheetMarker('discord', '2'));
   });
 });
 

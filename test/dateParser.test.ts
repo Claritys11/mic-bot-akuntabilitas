@@ -32,8 +32,8 @@ describe('jam tanpa hari → kemunculan terdekat ke depan (temuan holdout)', () 
 
 describe('bagian hari yang sedang berjalan (QA T18)', () => {
   const at = (iso: string) => new Date(iso);
-  test('"nanti malam" diucapkan 20.27 → 23.00 malam ini (bukan 20.00 yang sudah lewat)', () => {
-    expect(p('aku yang bikin rangkuman rumus nanti malam', at('2026-10-27T13:27:00Z'))).toBe('2026-10-27 23:00');
+  test('"nanti malam" diucapkan 20.27 → 23.59 malam ini (bukan 20.00 yang sudah lewat)', () => {
+    expect(p('aku yang bikin rangkuman rumus nanti malam', at('2026-10-27T13:27:00Z'))).toBe('2026-10-27 23:59');
   });
   test('"nanti sore" diucapkan 17.00 → 18.00', () => {
     expect(p('nanti sore', at('2026-10-27T10:00:00Z'))).toBe('2026-10-27 18:00');

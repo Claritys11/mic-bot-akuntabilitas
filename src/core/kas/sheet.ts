@@ -10,11 +10,22 @@ export interface SheetTab {
   rows: Cell[][];
 }
 
+export const MARKER_LABEL = 'ID kelas (jangan diubah)';
+
+/** Penanda tetap per kelas (bukan rahasia — hanya untuk mengenali pemilik sheet). */
+export function sheetMarker(platform: string, groupId: string): string {
+  let h = 2166136261;
+  for (const ch of `${platform}:${groupId}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return `MIC-${h.toString(36).toUpperCase()}`;
+}
+
 export const KAS_TABS = ['Ringkasan', 'Buku Kas', 'Status Iuran', 'Bukti Transfer'] as const;
 const HISTORY_PERIODS = 6;
 
 export interface KasSheetInput {
   className: string;
+  /** Penanda kelas pemilik sheet (lihat sheetMarker) — mencegah sheet kelas lain tertimpa. */
+  marker: string;
   amount: number;
   period: KasPeriod;
   now: Date;
@@ -45,6 +56,7 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
     ['Sudah lunas periode ini', statusNow.paid.length],
     ['Belum lunas periode ini', statusNow.unpaid.length],
     ['Diperbarui', formatWIB(i.now)],
+    [MARKER_LABEL, i.marker],
     [],
     ['Sheet ini diisi otomatis oleh MIC-Bot dari catatan kas kelas. Jangan ubah tab buatan bot — tulis catatan sendiri di tab baru.'],
     ['Pengeluaran / pemasukan lain dicatat lewat /kas keluar dan /kas masuk di Discord.'],
@@ -92,7 +104,8 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
 /** Akses ke Google Sheets yang disediakan adapter (core tidak memanggil jaringan langsung). */
 export interface KasSheetGateway {
   serviceEmail: string;
-  check(spreadsheetId: string): Promise<{ ok: true; title: string } | { ok: false; reason: string }>;
+  /** Akses + judul + penanda kelas yang sudah tertulis di tab Ringkasan (null kalau belum pernah diisi bot). */
+  check(spreadsheetId: string): Promise<{ ok: true; title: string; marker: string | null } | { ok: false; reason: string }>;
 }
 
 /** Ambil ID spreadsheet dari link Google Sheets (atau ID polos). */

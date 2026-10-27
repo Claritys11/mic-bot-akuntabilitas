@@ -45,6 +45,8 @@ const GroupSchema = new Schema(
   { timestamps: true },
 );
 GroupSchema.index({ platform: 1, groupId: 1 }, { unique: true });
+// Satu Google Sheet hanya untuk satu kelas (cegah laporan kelas lain tertimpa).
+GroupSchema.index({ 'kas.sheetId': 1 }, { unique: true, partialFilterExpression: { 'kas.sheetId': { $type: 'string' } } });
 export const GroupModel = mongoose.model('Group', GroupSchema);
 export type GroupDoc = InferSchemaType<typeof GroupSchema> & { _id: mongoose.Types.ObjectId };
 

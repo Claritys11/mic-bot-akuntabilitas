@@ -33,7 +33,7 @@ function fakeGoogle(opts: { status?: number; sheets?: string[] } = {}) {
 
 describe('klien Google Sheets', () => {
   test('cek akses: berhasil → judul; 403 → minta dibagikan ke email akun layanan', async () => {
-    expect(await new SheetsClient(sa, fakeGoogle().http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1' });
+    expect(await new SheetsClient(sa, fakeGoogle().http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1', marker: null });
     const denied = await new SheetsClient(sa, fakeGoogle({ status: 403 }).http).check('abc');
     expect(denied).toEqual({ ok: false, reason: `belum dibagikan ke ${sa.client_email} sebagai Editor` });
   });
