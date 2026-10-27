@@ -102,17 +102,18 @@ export function recipientMatches(extracted: string, expected: string): boolean {
   const xs = nameTokens(extracted);
   const es = nameTokens(expected);
   if (!xs.length || !es.length) return false;
-  let matched = 0;
+  // Tiap token nama rekening hanya boleh "terpakai" sekali — "SARI SARI" tidak boleh menutupi "Sari Dewi".
+  const used = new Set<number>();
   let solid = false;
   for (const x of xs) {
     const masked = x.includes('*');
     const p = x.replace(/\*+/g, '');
     if (!p) continue;
-    const hit = es.some((e) => (masked ? e.startsWith(p) : e === p || (p.length >= 3 && e.startsWith(p)) || (e.length >= 3 && p.startsWith(e))));
-    if (hit) {
-      matched++;
-      if (!masked && p.length >= 3) solid = true;
-    }
+    // Tersamar: awalan sama. Utuh: sama persis, atau terpotong di bukti (≥ 3 huruf, mis. "LESTA" ← "LESTARI").
+    const i = es.findIndex((e, idx) => !used.has(idx) && (masked ? e.startsWith(p) : e === p || (p.length >= 3 && e.startsWith(p))));
+    if (i < 0) continue;
+    used.add(i);
+    if (!masked && p.length >= 3) solid = true;
   }
-  return solid && matched >= Math.min(2, es.length);
+  return solid && used.size >= Math.min(2, es.length);
 }

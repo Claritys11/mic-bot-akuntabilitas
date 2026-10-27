@@ -44,6 +44,9 @@ const ids = {
   form: (id: string) => `kf:ok:${id}`,
 };
 
+/** Screenshot bukti transfer jauh di bawah ini; gambar lebih besar tidak diunduh. */
+const MAX_PROOF_BYTES = 10 * 1024 * 1024;
+
 const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) =>
   ctx.isAdmin || (g.kas?.treasurerId != null && g.kas.treasurerId === ctx.actor.platformUserId);
 
@@ -52,6 +55,9 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
   if (!msg.isDirect && (!group.kasChannelId || msg.channelId !== group.kasChannelId)) return [];
   const image = msg.attachments.find(isImage);
   if (!image) return [];
+  if ((image.size ?? 0) > MAX_PROOF_BYTES) {
+    return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: 'Gambarnya kegedean (maks 10 MB) 🙏 Coba kirim screenshot biasa ya.' }];
+  }
 
   const data = await image.getData();
   const imageHash = createHash('sha256').update(data).digest('hex');

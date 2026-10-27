@@ -151,6 +151,9 @@ describe('cocokkan nama penerima', () => {
     ['D***', 'Dewi', false],
     ['BUDI SANTOSO', 'Sari Dewi', false],
     ['SARI PUTRI', 'Sari Dewi', false],
+    ['SARI SARI', 'Sari Dewi', false], // satu token rekening tidak boleh dihitung dua kali
+    ['SARI DEWI LESTA', 'Sari Dewi Lestari', true], // nama terpotong di bukti
+    ['SARIDEWI', 'Sari', false], // dulu lolos lewat aturan awalan terbalik
   ])('%p vs %p → %p', (x, e, want) => {
     expect(recipientMatches(x, e)).toBe(want);
   });

@@ -59,6 +59,13 @@ describe('perceptual hash bukti transfer', () => {
   test('bukti lain dianggap berbeda', () => {
     for (const seed of [8, 99, 1234]) expect(hamming(original, perceptualHash(asPng(receipt(seed), W, H))!)).toBeGreaterThan(SIMILAR_MAX_DISTANCE);
   });
+  test('PNG raksasa (dari header) ditolak sebelum di-decode', () => {
+    const png = asPng(receipt(1, 16, 16), 16, 16);
+    const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+    view.setUint32(16, 100_000);
+    view.setUint32(20, 100_000);
+    expect(perceptualHash(png)).toBeNull();
+  });
   test('format tidak dikenal / rusak → null, tidak crash', () => {
     expect(perceptualHash(new Uint8Array([1, 2, 3, 4, 5]))).toBeNull();
     expect(perceptualHash(new Uint8Array([0xff, 0xd8, 0, 0]))).toBeNull();

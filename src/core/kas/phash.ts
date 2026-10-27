@@ -19,8 +19,11 @@ function decode(data: Uint8Array): Rgba | null {
     return { width: img.width, height: img.height, data: img.data };
   }
   if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+    // Cek ukuran dari header IHDR SEBELUM decode, supaya PNG "bom" (kecil terkompres, raksasa saat dibuka) ditolak.
+    if (data.length < 24) return null;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    if (view.getUint32(16) * view.getUint32(20) > MAX_PIXELS) return null;
     const img = PNG.sync.read(Buffer.from(data));
-    if (img.width * img.height > MAX_PIXELS) return null;
     return { width: img.width, height: img.height, data: img.data };
   }
   return null; // WebP dll. belum didukung → hanya SHA-256
