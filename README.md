@@ -52,6 +52,8 @@ Bun · TypeScript strict · discord.js v14 · MongoDB + Mongoose · zod · OpenR
 | Nimbrung & suasana | bot menanggapi janji seperti teman sekelas, menyesuaikan nada (santai/serius/tegang/sedih) |
 | Tanya jawab | *"ada tugas gak nih?"*, *"kas aku udah lunas?"*, *"ada lomba ga?"* — dijawab dari data, tanpa perlu tag |
 | Konfirmasi ketik | balas *"jadi dong, besok"* / *"ga jadi"* selain lewat tombol |
+| Pilot | `/pilot mode diam` (baseline) · `aktif` · `jeda` (rem darurat), `/pilot ekspor` |
+| Privasi | `/data hapus-saya`, `/data hapus-anggota`, `/data hapus-kelas` |
 
 Tanpa API key LLM, deteksi janji tetap jalan memakai heuristik. Rangkuman dan pembacaan bukti
 transfer butuh LLM.
@@ -173,6 +175,10 @@ bun run typecheck
 bun run lint
 bun simulate      # simulasi end-to-end core + Mongo tanpa Discord (DB mic_sim), tambah --llm untuk pakai LLM
 bun run eval:voice  # uji suara bot (janji & tanya jawab) ke LLM sungguhan, tidak menyentuh DB
+bun run demo:check  # cek sebelum demo: Mongo, LLM teks & vision, mode diam, DEMO_TIME_SCALE
+bun run pilot:metrics -- --dari 2026-11-02 --sampai 2026-11-20   # metrik pilot, biaya LLM, masa bot mati
+bun run holdout prepare|label|eval …   # ukur akurasi deteksi janji pada chat asli (lihat docs/PILOT.md)
+bash scripts/backup.sh  # backup Mongo (pasang di cron harian)
 ```
 
 CI GitHub Actions menjalankan typecheck, lint, dan test di setiap push/PR. Panduan lengkap:

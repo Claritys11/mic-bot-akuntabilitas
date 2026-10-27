@@ -5,3 +5,4 @@ dist/
 .remember/
 .git/
 data
+backups

@@ -30,4 +30,19 @@ atau DM ke maintainer — jangan membuka issue biasa untuk celah yang bisa disal
 - **Permanen:** janji, transaksi & bukti kas, info lomba, profil kelas, daftar anggota (nama tampilan).
 - **Sementara:** pesan mentah obrolan (TTL **48 jam**, terhapus otomatis), state wawancara setup (3 hari).
 - **Tidak ada** dasbor guru atau skor individu publik; skor ketepatan janji hanya di level kelas.
-- Rekap kas di grup tidak menyebut nama yang belum bayar; pengingat personal lewat DM.
+- Rekap kas di grup tidak menyebut nama yang belum bayar; pengingat personal lewat DM. DM tertutup → grup
+  hanya diberi ajakan membuka DM, tanpa nominal/tugas.
+- Detail bukti kas (nama pengirim/penerima, bank, nomor ref) dihapus setelah ditinjau; OpenRouter
+  `data_collection=deny`.
+
+## Hak menghapus data
+
+| Siapa | Perintah | Yang terjadi |
+|---|---|---|
+| Siswa | `/data hapus-saya` | Janji miliknya, bukti kas, pesan di buffer, data anggota dihapus; namanya di ledger kas diganti "(anggota dihapus)" |
+| Pengurus | `/data hapus-anggota anggota:@x` | Sama, untuk anggota lain |
+| Pengurus | `/data hapus-kelas` | Semua data kelas dihapus, termasuk ledger |
+| Pengurus | `/pilot mode jeda` | Rem darurat: bot berhenti total di kelas itu sampai `/pilot mode aktif` |
+
+Backup (`scripts/backup.sh`) berisi data siswa: simpan lokal (izin 600, folder `backups/` tidak ikut git),
+retensi 14 hari. Data yang dihapus ikut hilang dari backup setelah 14 hari.

@@ -7,6 +7,7 @@ import { seedOpportunities } from './src/core/opps/service.ts';
 import { Clock, now, setClock } from './src/core/time.ts';
 import type { Platform, Sender } from './src/core/types.ts';
 import { connectDb, disconnectDb } from './src/db/connect.ts';
+import { recordStartup } from './src/db/health.ts';
 import { recordLlmCall } from './src/db/llmUsage.ts';
 import { OpenRouterProvider } from './src/llm/openrouter.ts';
 import { startScheduler } from './src/scheduler/index.ts';
@@ -71,7 +72,19 @@ if (!Object.keys(senders).length) {
   await disconnectDb();
   process.exit(1);
 }
-const stopScheduler = startScheduler(core, routeSender(senders));
+const router = routeSender(senders);
+// Lapor ke operator lewat DM Discord (kalau OPERATOR_DISCORD_ID diisi). Gagal kirim cukup dicatat di log.
+const alertOperator = (text: string) => {
+  console.warn(`[health] ${text}`);
+  const id = config.discord.operatorId;
+  if (!id || !senders.discord) return;
+  void senders.discord
+    .send({ to: { kind: 'dm', member: { platform: 'discord', platformUserId: id, groupId: '', displayName: 'Operator' }, fallbackChannelId: '' }, text })
+    .catch((err) => console.warn('[health] gagal DM operator:', (err as Error).message));
+};
+const down = await recordStartup();
+if (down) alertOperator(`⚠️ MIC-Bot sempat mati ±${down.minutes} menit (sejak ${down.from.toISOString()}). Kalau sedang pilot, catat ini — data di rentang itu tidak lengkap.`);
+const stopScheduler = startScheduler(core, router, undefined, alertOperator);
 
 const shutdown = async (signal: string) => {
   console.log(`[app] ${signal}, mematikan...`);

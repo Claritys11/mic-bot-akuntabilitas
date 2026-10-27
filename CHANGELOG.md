@@ -6,6 +6,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 
 ### Ditambahkan
 - Janji jelas (LLM yakin, pemilik sendiri, ada deadline) langsung aktif; salah tangkap → balas "bukan" / tombol "Bukan janjiku"; yang belum diakui tidak pernah diumumkan ke grup.
+- Rem darurat `/pilot mode jeda` dan penghapusan data `/data hapus-saya|hapus-anggota|hapus-kelas`.
+- Mode diam untuk baseline pilot + `/pilot ekspor` dengan kolom cek ketua.
+- Alat holdout (`bun run holdout`), log biaya LLM nyata, catatan bot mati + DM operator, `scripts/backup.sh`.
+- `docs/DEMO.md` + `bun run demo:check`.
 - Rencana pilot (`docs/PILOT.md`) dan `bun run pilot:metrics` (ketepatan janji, telat, salah-aktif, kas).
 - Cek rekening penerima bukti kas (`/kas atur penerima:...`) dan perceptual hash untuk bukti yang di-screenshot ulang.
 - Mode tanpa simpan bukti: detail pribadi bukti kas dihapus setelah ditinjau; OpenRouter `data_collection=deny`.

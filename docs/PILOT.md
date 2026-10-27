@@ -25,12 +25,25 @@ besar daripada efek bot. Maka satu kelas dibandingkan dengan dirinya sendiri:
 - Kalau ada kelas kedua yang mau, boleh dijadikan pembanding tambahan, tapi bukan syarat.
 - Laporkan angka apa adanya **beserta ukuran sampel** sebagai *hasil awal*, bukan bukti kausal.
 
+## Checklist sebelum minggu diam dimulai
+
+- [ ] Formulir persetujuan wali terkumpul (sebutkan hak menarik persetujuan → `/data hapus-saya`).
+- [ ] `OPERATOR_DISCORD_ID` diisi → kamu dapat DM kalau bot sempat mati atau scheduler macet.
+- [ ] Backup harian aktif: `crontab -e` → `0 2 * * * cd /path/repo && bash scripts/backup.sh >> backups/backup.log 2>&1`.
+- [ ] Pengurus tahu rem darurat: `/pilot mode jeda` menghentikan bot seketika di kelas itu.
+- [ ] `bun run demo:check` lulus; lalu `/pilot mode diam`.
+
+Bot yang mati lebih dari 30 menit dicatat otomatis dan muncul di `bun run pilot:metrics`. Kalau bot mati
+lebih dari sehari di minggu diam, pertimbangkan memperpanjang baseline.
+
 ## Persetujuan & privasi (sebelum mulai)
 
 - Formulir persetujuan wali murid (Google Form/kertas): apa yang dicatat, berapa lama, siapa yang bisa melihat.
 - Bot sudah: pesan mentah ≤ 48 jam, tanpa skor individu publik, detail bukti kas dihapus setelah ditinjau,
   OpenRouter `data_collection=deny`. Sampaikan ini di formulir.
 - Hanya data kelas; tidak ada dasbor guru.
+- Menarik persetujuan: siswa `/data hapus-saya`; pengurus `/data hapus-anggota` atau `/data hapus-kelas`
+  (dua langkah, permanen; catatan kas dianonimkan agar saldo kelas tetap benar).
 
 ## Metrik
 

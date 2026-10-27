@@ -255,3 +255,11 @@ const LlmUsageSchema = new Schema({
 });
 LlmUsageSchema.index({ day: 1, model: 1 }, { unique: true });
 export const LlmUsageModel = mongoose.model('LlmUsage', LlmUsageSchema);
+
+// ---------- Kesehatan bot: detak scheduler & catatan mati (keabsahan data pilot) ----------
+const HeartbeatSchema = new Schema({ _id: { type: String }, lastTick: { type: Date, required: true }, startedAt: { type: Date, required: true } });
+export const HeartbeatModel = mongoose.model('Heartbeat', HeartbeatSchema);
+
+const DowntimeSchema = new Schema({ from: { type: Date, required: true }, to: { type: Date, required: true }, minutes: { type: Number, required: true } }, { timestamps: false });
+DowntimeSchema.index({ from: 1 });
+export const DowntimeModel = mongoose.model('Downtime', DowntimeSchema);

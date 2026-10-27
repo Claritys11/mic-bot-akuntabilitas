@@ -69,6 +69,9 @@ Versi demo: kurasi, bukan scraper.
 - [ ] Minggu 1 diam (baseline) → minggu 2–3 aktif; ketua cek sampel acak tiap akhir fase
 - [x] Alat holdout: `bun run holdout prepare|label|eval` (parser ekspor WA, anonimisasi, precision/recall alur penuh)
 - [x] Biaya LLM nyata per hari → `pilot:metrics` (per kelas per bulan)
+- [x] Rem darurat `/pilot mode jeda` + hapus data `/data …` (hak menarik persetujuan)
+- [x] Catatan bot mati + DM operator + `scripts/backup.sh` (data pilot tidak bolong)
+- [ ] Pasang cron backup harian & isi OPERATOR_DISCORD_ID di mesin yang menjalankan bot
 - [ ] Holdout berlabel dari chat asli (anonim) → jalankan `holdout eval` sekali di akhir pilot
 - [ ] Survei singkat + wawancara 5–10 ketua/bendahara
 

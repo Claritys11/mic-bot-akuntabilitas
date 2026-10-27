@@ -7,6 +7,8 @@ const EnvSchema = z.object({
   DISCORD_TOKEN: optionalString,
   DISCORD_CLIENT_ID: optionalString,
   DISCORD_GUILD_ID: optionalString,
+  // ID Discord orang yang menjalankan bot: menerima DM kalau bot sempat mati / scheduler macet.
+  OPERATOR_DISCORD_ID: optionalString,
 
   // WhatsApp (Baileys, tidak resmi). Sesi login disimpan di WA_AUTH_DIR — rahasia, jangan di-commit.
   WHATSAPP_ENABLED: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).default('false')),
@@ -45,7 +47,7 @@ export interface LLMEndpoint {
 }
 
 export interface Config {
-  discord: { token?: string; clientId?: string; guildId?: string };
+  discord: { token?: string; clientId?: string; guildId?: string; operatorId?: string };
   whatsapp: { enabled: boolean; phoneNumber?: string; authDir: string };
   mongoUri: string;
   llm: {
@@ -71,7 +73,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   // Key cadangan OpenRouter hanya dikirim ke OpenRouter, jangan ke endpoint lain (mis. Hermes lokal).
   const backupFor = (baseUrl: string) => (new URL(baseUrl).hostname.endsWith('openrouter.ai') ? e.BACKUP_OPENROUTER_API_KEY : undefined);
   return {
-    discord: { token: e.DISCORD_TOKEN, clientId: e.DISCORD_CLIENT_ID, guildId: e.DISCORD_GUILD_ID },
+    discord: { token: e.DISCORD_TOKEN, clientId: e.DISCORD_CLIENT_ID, guildId: e.DISCORD_GUILD_ID, operatorId: e.OPERATOR_DISCORD_ID },
     whatsapp: { enabled: e.WHATSAPP_ENABLED === 'true', phoneNumber: e.WA_PHONE_NUMBER, authDir: e.WA_AUTH_DIR },
     mongoUri: e.MONGODB_URI,
     llm: {

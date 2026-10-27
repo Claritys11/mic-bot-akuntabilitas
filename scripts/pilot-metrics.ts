@@ -3,7 +3,7 @@
 import { loadConfig } from '../src/config.ts';
 import { pilotMetrics } from '../src/core/pilot/metrics.ts';
 import { connectDb, disconnectDb } from '../src/db/connect.ts';
-import { GroupModel, KasProofModel, LlmUsageModel, PromiseModel } from '../src/db/models.ts';
+import { DowntimeModel, GroupModel, KasProofModel, LlmUsageModel, PromiseModel } from '../src/db/models.ts';
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(name);
@@ -33,6 +33,11 @@ for (const g of groups) {
   console.log(`  auto-aktif ${m.autoActivated} · salah-aktif ${m.falseActivations} (${m.falseActivationPct ?? '—'}%)`);
   console.log(`  kas: disetujui ${m.kas.approved} (Rp${m.kas.approvedTotal.toLocaleString('id-ID')}) · ditolak ${m.kas.rejected} · ditandai ${m.kas.flagged} · menunggu ${m.kas.pending}`);
 }
+// Bot mati di tengah pilot = data tidak lengkap; tampilkan supaya bisa diputuskan perlu diulang atau tidak.
+const downs = await DowntimeModel.find({ from: { $lte: to }, to: { $gte: from } }).sort({ from: 1 }).lean();
+console.log(downs.length ? `\n⚠️  Bot sempat mati ${downs.length}x dalam periode ini:` : '\nBot tidak tercatat mati dalam periode ini ✓');
+for (const d of downs) console.log(`  ${d.from.toISOString()} → ${d.to.toISOString()} (${d.minutes} menit)`);
+
 // Biaya LLM nyata (dari OpenRouter) untuk slide model bisnis.
 const dayKey = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
 const usage = await LlmUsageModel.find({ day: { $gte: dayKey(from), $lte: dayKey(now) } }).lean();

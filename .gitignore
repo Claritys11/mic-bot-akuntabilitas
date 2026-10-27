@@ -6,3 +6,4 @@ dist/
 
 # Sesi login WhatsApp (setara password — jangan pernah di-commit)
 data/
+backups/
