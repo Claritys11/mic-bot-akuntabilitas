@@ -31,7 +31,6 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'setup',
     description: 'Atur kelas ini — kosongkan opsi untuk diwawancarai bot',
-    adminOnly: true,
     options: [
       { name: 'kelas', description: 'Nama kelas, mis. XI RPL 2 (kosong = wawancara)', type: 'string' },
       { name: 'jurusan', description: 'Jurusan, mis. RPL, TKJ, PG', type: 'string' },
@@ -103,7 +102,6 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: 'pilot',
     description: 'Mode pilot (pengurus): baseline diam-diam & ekspor data',
-    adminOnly: true,
     subcommands: [
       {
         name: 'mode',
@@ -129,6 +127,38 @@ export const COMMANDS: CommandSpec[] = [
       { name: 'apa', description: 'Mau diingetin soal apa', type: 'string', required: true },
       { name: 'kapan', description: 'Mis. besok jam 7, jumat sore, tgl 30', type: 'string', required: true },
       { name: 'untuk', description: 'Untuk siapa', type: 'string', choices: [{ name: 'aku saja (DM)', value: 'aku' }, { name: 'seluruh kelas', value: 'kelas' }] },
+    ],
+  },
+  {
+    name: 'jam-tenang',
+    description: 'Atur jam tenang: pengingat tidak dikirim malam (pengurus)',
+    options: [
+      { name: 'mulai', description: 'Jam mulai (0–23, default 21)', type: 'integer' },
+      { name: 'selesai', description: 'Jam selesai (0–23, default 6)', type: 'integer' },
+      { name: 'mati', description: 'Matikan jam tenang?', type: 'boolean' },
+    ],
+  },
+  {
+    name: 'tim',
+    description: 'Tim inti kelas: ketua, bendahara, sekretaris',
+    subcommands: [
+      { name: 'lihat', description: 'Siapa saja tim inti kelas ini' },
+      {
+        name: 'tambah',
+        description: 'Beri peran ke anggota (ketua/admin)',
+        options: [
+          { name: 'peran', description: 'Peran', type: 'string', required: true, choices: [{ name: 'ketua', value: 'ketua' }, { name: 'bendahara', value: 'bendahara' }, { name: 'sekretaris', value: 'sekretaris' }] },
+          { name: 'anggota', description: 'Anggota', type: 'user', required: true },
+        ],
+      },
+      {
+        name: 'hapus',
+        description: 'Copot peran anggota (ketua/admin)',
+        options: [
+          { name: 'anggota', description: 'Anggota', type: 'user', required: true },
+          { name: 'peran', description: 'Peran (kosong = semua)', type: 'string', choices: [{ name: 'ketua', value: 'ketua' }, { name: 'bendahara', value: 'bendahara' }, { name: 'sekretaris', value: 'sekretaris' }] },
+        ],
+      },
     ],
   },
   {

@@ -20,6 +20,18 @@ const GroupSchema = new Schema(
     // 'jeda' = rem darurat: bot berhenti total di kelas ini (tidak mencatat, membalas, atau menagih).
     pilotMode: { type: String, enum: ['off', 'diam', 'jeda'], default: 'off' },
     lastDigestAt: { type: Date, default: null },
+    // Peran tim inti (ID anggota). Bendahara utama untuk pesan tetap di kas.treasurerId.
+    roles: {
+      ketua: { type: [String], default: [] },
+      bendahara: { type: [String], default: [] },
+      sekretaris: { type: [String], default: [] },
+    },
+    // Jam tenang (WIB): pengingat terjadwal ditahan. Default 21.00–06.00.
+    quietHours: {
+      enabled: { type: Boolean, default: true },
+      start: { type: Number, default: 21 },
+      end: { type: Number, default: 6 },
+    },
     kas: {
       amount: { type: Number, default: 0 },
       period: { type: String, enum: ['mingguan', 'bulanan'], default: 'bulanan' },
@@ -331,3 +343,17 @@ export type ReminderDoc = InferSchemaType<typeof ReminderSchema> & { _id: mongoo
 // ---------- Jadwal tugas berkala (mis. ambil feed lomba harian) ----------
 const JobRunSchema = new Schema({ _id: { type: String }, lastRunAt: { type: Date, required: true }, note: { type: String, default: '' } });
 export const JobRunModel = mongoose.model('JobRun', JobRunSchema);
+
+// ---------- Jejak audit (siapa mengubah apa — transparansi kas & pengaturan) ----------
+const AuditSchema = new Schema({
+  groupId: { type: String, required: true },
+  at: { type: Date, required: true, default: Date.now },
+  actorId: { type: String, required: true },
+  actorName: { type: String, required: true },
+  action: { type: String, required: true }, // mis. kas.setujui, kas.keluar, tim.tambah
+  detail: { type: String, default: '' },
+});
+AuditSchema.index({ groupId: 1, at: -1 });
+// Cukup untuk 1 tahun ajaran + LPJ.
+AuditSchema.index({ at: 1 }, { expireAfterSeconds: 400 * 24 * 3600 });
+export const AuditModel = mongoose.model('Audit', AuditSchema);

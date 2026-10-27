@@ -4,16 +4,17 @@ import { ledgerEntries } from '../core/kas/service.ts';
 import { FLAG_TEXT, type ProofFlag } from '../core/kas/verify.ts';
 import { now } from '../core/time.ts';
 import type { Platform } from '../core/types.ts';
-import { GroupModel, KasProofModel, type GroupDoc } from '../db/models.ts';
+import { AuditModel, GroupModel, KasProofModel, type GroupDoc } from '../db/models.ts';
 import { SheetsError, type SheetsClient } from '../integrations/google/sheets.ts';
 
 // Tulis ulang Google Sheet kas tiap kelas yang ditandai "dirty" (dicek tiap menit, aman restart).
 
 export async function syncKasSheet(client: SheetsClient, g: GroupDoc): Promise<void> {
-  const [members, entries, proofs] = await Promise.all([
+  const [members, entries, proofs, audits] = await Promise.all([
     listMembers(g.platform as Platform, g.groupId),
     ledgerEntries(g.groupId),
     KasProofModel.find({ groupId: g.groupId }, { createdAt: 1, member: 1, nominal: 1, period: 1, status: 1, flags: 1 }).sort({ createdAt: -1 }).limit(500).lean(),
+    AuditModel.find({ groupId: g.groupId, action: /^(kas|tim)\./ }).sort({ at: -1 }).limit(300).lean(),
   ]);
   const tabs = buildKasSheet({
     className: g.className,
@@ -25,7 +26,11 @@ export async function syncKasSheet(client: SheetsClient, g: GroupDoc): Promise<v
     entries,
     proofs: proofs.map((p) => ({ createdAt: p.createdAt as Date, memberName: p.member.displayName, nominal: p.nominal ?? null, period: p.period, status: p.status, flags: p.flags })),
     flagText: (f) => FLAG_TEXT[f as ProofFlag] ?? f,
+    audits: audits.map((a) => ({ at: a.at, actorName: a.actorName, action: a.action, detail: a.detail ?? '' })),
   });
+  // Cek lagi pemiliknya tepat sebelum menimpa (sheet bisa dipindah/ditiru setelah ditautkan).
+  const marker = await client.readMarker(g.kas!.sheetId!);
+  if (marker && marker !== sheetMarker(g.platform, g.groupId)) throw new Error('sheet ini milik kelas lain — sambungkan Google Sheet baru lewat /kas sheet');
   await client.writeTabs(g.kas!.sheetId!, tabs);
 }
 

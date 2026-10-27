@@ -6,6 +6,8 @@ import { DAY_MS, formatWIB, now, wibParts } from '../time.ts';
 import type { LLMProvider } from '../../llm/provider.ts';
 import { mention, type Action, type ActionEvent, type Card, type CommandInvocation, type IncomingMessage, type OutgoingMessage, type Reply } from '../types.ts';
 import { DRAFT_PREFIX, importLinkAsDraft, publishDraft, type PageReader } from './importer.ts';
+import { inQuietHours } from '../quiet.ts';
+import { can } from '../team/roles.ts';
 import { pickNextOpportunity, relevance } from './relevance.ts';
 import { SEED_OPPORTUNITIES } from './seed.ts';
 
@@ -98,6 +100,7 @@ export async function collectOppPosts(at: Date): Promise<OutgoingMessage[]> {
   const opps = await OpportunityModel.find({ deadline: { $gt: at }, draft: { $ne: true } }).lean<OpportunityDoc[]>();
   const out: OutgoingMessage[] = [];
   for (const g of groups) {
+    if (inQuietHours(at, g.quietHours)) continue;
     const visible = opps.filter((o) => o.groupId == null || o.groupId === g.groupId);
     const posts = await OppPostModel.find({ groupId: g.groupId }).lean();
     const recent = posts.filter((p) => p.postedAt.getTime() > at.getTime() - 7 * DAY_MS).length;
@@ -131,7 +134,7 @@ export async function handleOppAction(ev: ActionEvent): Promise<Reply> {
   if (!o || (o.groupId != null && o.groupId !== ev.groupId)) return { reply: { text: 'Info lomba tidak ditemukan.', private: true } };
 
   if (verb === 'save' || verb === 'drop') {
-    if (!ev.isAdmin) return { reply: { text: 'Yang bisa menyimpan/membuang info lomba hanya pengurus kelas 🙏', private: true } };
+    if (!can(await getGroup(ev.platform, ev.groupId), ev, 'lomba')) return { reply: { text: 'Yang bisa menyimpan/membuang info lomba: ketua, sekretaris, atau admin 🙏', private: true } };
     if (!o.draft) return { reply: { text: 'Info ini sudah diproses.', private: true } };
     if (verb === 'drop') {
       await OpportunityModel.deleteOne({ _id: id, draft: true });
@@ -158,7 +161,7 @@ export async function handleOppAction(ev: ActionEvent): Promise<Reply> {
 }
 
 export async function lombaTambah(cmd: CommandInvocation, llm?: LLMProvider, reader?: PageReader): Promise<Reply> {
-  if (!cmd.isAdmin) return { reply: { text: 'Hanya admin yang bisa menambah info lomba. Siswa bisa kirim linknya sambil tag aku 😉', private: true } };
+  if (!can(await getGroup(cmd.platform, cmd.groupId), cmd, 'lomba')) return { reply: { text: 'Yang bisa menambah info lomba: ketua, sekretaris, atau admin. Siswa bisa kirim linknya sambil tag aku 😉', private: true } };
   const title = String(cmd.options.judul ?? '').trim();
   const deadlineRaw = String(cmd.options.deadline ?? '').trim();
   // Cukup link → bot membaca halamannya, pengurus tinggal cek & simpan.

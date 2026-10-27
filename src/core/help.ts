@@ -31,6 +31,8 @@ export function helpText(ctx: HelpContext): string {
       '• /kas atur — iuran, bendahara, `cek_bukti` (DM / channel tim inti 🔒), `tambah_tim`, `penerima` rekening',
       '• /lomba tambah link:… — cukup link, aku baca sendiri',
       '• /pilot mode diam|aktif|jeda — uji coba & rem darurat',
+      '• /jam-tenang — default 21.00–06.00: pengingat ditahan malam hari',
+      '• /kas sheet — laporan kas otomatis di Google Sheets; /kas keluar · /kas masuk',
     );
   }
   if (ctx.textCommands) lines.push('', '_Di WhatsApp, perintah diketik, mis. `/janji list`._');

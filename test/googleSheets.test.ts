@@ -14,7 +14,7 @@ describe('JWT akun layanan', () => {
   });
 });
 
-function fakeGoogle(opts: { status?: number; sheets?: string[] } = {}) {
+function fakeGoogle(opts: { status?: number; sheets?: string[]; markerStatus?: number } = {}) {
   const calls: { url: string; method: string; body: unknown }[] = [];
   const http = (async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
@@ -23,6 +23,7 @@ function fakeGoogle(opts: { status?: number; sheets?: string[] } = {}) {
     if (u.includes('oauth2')) return json(200, { access_token: 'tok', expires_in: 3600 });
     if (opts.status) return json(opts.status, { error: { message: 'denied' } });
     if (u.includes('fields=properties.title')) return json(200, { properties: { title: 'Kas XI RPL 1' } });
+    if (u.includes('/values/')) return opts.markerStatus ? json(opts.markerStatus, { error: { message: opts.markerStatus === 400 ? 'Unable to parse range: Ringkasan' : 'quota' } }) : json(200, { values: [['ID kelas (jangan diubah)', 'MIC-X']] });
     if (u.includes('fields=sheets')) return json(200, { sheets: (opts.sheets ?? []).map((t, i) => ({ properties: { sheetId: i, title: t } })) });
     if (u.endsWith(':batchUpdate') && calls.filter((c) => c.url.endsWith(':batchUpdate')).length === 1 && (opts.sheets ?? []).length < 2)
       return json(200, { replies: [{ addSheet: { properties: { sheetId: 9, title: 'Buku Kas' } } }] });
@@ -33,7 +34,10 @@ function fakeGoogle(opts: { status?: number; sheets?: string[] } = {}) {
 
 describe('klien Google Sheets', () => {
   test('cek akses: berhasil → judul; 403 → minta dibagikan ke email akun layanan', async () => {
-    expect(await new SheetsClient(sa, fakeGoogle().http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1', marker: null });
+    expect(await new SheetsClient(sa, fakeGoogle().http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1', marker: 'MIC-X' });
+    expect(await new SheetsClient(sa, fakeGoogle({ markerStatus: 400 }).http).check('abc')).toEqual({ ok: true, title: 'Kas XI RPL 1', marker: null });
+    // Error lain saat membaca penanda → tolak (gagal tertutup), jangan dianggap sheet kosong.
+    expect((await new SheetsClient(sa, fakeGoogle({ markerStatus: 429 }).http).check('abc')).ok).toBe(false);
     const denied = await new SheetsClient(sa, fakeGoogle({ status: 403 }).http).check('abc');
     expect(denied).toEqual({ ok: false, reason: `belum dibagikan ke ${sa.client_email} sebagai Editor` });
   });

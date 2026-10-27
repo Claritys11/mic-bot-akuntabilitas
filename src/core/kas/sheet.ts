@@ -19,7 +19,7 @@ export function sheetMarker(platform: string, groupId: string): string {
   return `MIC-${h.toString(36).toUpperCase()}`;
 }
 
-export const KAS_TABS = ['Ringkasan', 'Buku Kas', 'Status Iuran', 'Bukti Transfer'] as const;
+export const KAS_TABS = ['Ringkasan', 'Buku Kas', 'Status Iuran', 'Bukti Transfer', 'Jejak Audit'] as const;
 const HISTORY_PERIODS = 6;
 
 export interface KasSheetInput {
@@ -33,7 +33,20 @@ export interface KasSheetInput {
   entries: LedgerEntry[];
   proofs: { createdAt: Date; memberName: string; nominal: number | null; period: string; status: string; flags: string[] }[];
   flagText: (flag: string) => string;
+  /** Tindakan kas & tim inti (siapa menyetujui/menolak/mencatat apa) — terbaru dulu. */
+  audits?: { at: Date; actorName: string; action: string; detail: string }[];
 }
+
+const ACTION_LABEL: Record<string, string> = {
+  'kas.setujui': 'Setujui bukti',
+  'kas.tolak': 'Tolak bukti',
+  'kas.keluar': 'Catat pengeluaran',
+  'kas.masuk': 'Catat pemasukan',
+  'kas.atur': 'Atur iuran',
+  'kas.sheet': 'Sambungkan Sheet',
+  'tim.tambah': 'Tambah tim inti',
+  'tim.hapus': 'Copot tim inti',
+};
 
 const KIND_LABEL: Record<LedgerEntry['kind'], string> = { iuran: 'Iuran', koreksi: 'Koreksi', pengeluaran: 'Pengeluaran', pemasukan: 'Pemasukan lain' };
 const STATUS_LABEL: Record<string, string> = { pending: 'Menunggu cek', approved: 'Disetujui', rejected: 'Ditolak' };
@@ -93,11 +106,15 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
     bukti.push([formatWIB(p.createdAt, 'iso'), p.memberName, p.nominal ?? '', periodLabel(p.period), STATUS_LABEL[p.status] ?? p.status, p.flags.map(i.flagText).join('; ')]);
   }
 
+  const jejak: Cell[][] = [['Waktu', 'Oleh', 'Tindakan', 'Detail']];
+  for (const a of i.audits ?? []) jejak.push([formatWIB(a.at, 'iso'), a.actorName, ACTION_LABEL[a.action] ?? a.action, a.detail]);
+
   return [
     { title: 'Ringkasan', rows: ringkasan },
     { title: 'Buku Kas', rows: bukuKas },
     { title: 'Status Iuran', rows: status },
     { title: 'Bukti Transfer', rows: bukti },
+    { title: 'Jejak Audit', rows: jejak },
   ];
 }
 

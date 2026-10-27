@@ -23,6 +23,9 @@ import {
   type Reply,
   type SpeechLevel,
 } from '../types.ts';
+import { inQuietHours } from '../quiet.ts';
+import { audit } from '../team/audit.ts';
+import { can } from '../team/roles.ts';
 import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
 import { sheetMarker, spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
@@ -59,11 +62,8 @@ const refHashOf = (ref: string) => createHash('sha256').update(normalizeRef(ref)
  */
 const SCRUB_AFTER_REVIEW = { sender: null, bank: null, recipient: null, refId: null };
 
-/** Admin, bendahara, atau anggota tim inti yang terdaftar eksplisit — bukan "siapa pun yang bisa lihat channel". */
-const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) =>
-  ctx.isAdmin ||
-  (g.kas?.treasurerId != null && g.kas.treasurerId === ctx.actor.platformUserId) ||
-  Boolean(g.kas?.reviewerIds?.includes(ctx.actor.platformUserId));
+/** Admin, bendahara (peran), atau tim inti kas yang terdaftar eksplisit — bukan "siapa pun yang bisa lihat channel". */
+const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) => can(g, ctx, 'kas');
 
 /** Gambar di channel kas → ekstraksi vision → verifikasi → tunggu persetujuan bendahara. */
 export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
@@ -282,6 +282,7 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
   }
   await TransactionModel.insertMany(entries);
   await markKasDirty(ev.groupId);
+  await audit(ev.groupId, ev.actor, 'kas.setujui', `${proof.member.displayName} ${rupiah(nominal)} (${entries.map((e) => periodLabel(e.period)).join(', ')})`);
 
   return {
     update: {
@@ -312,6 +313,7 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
   if (verb === 'no') {
     await KasProofModel.updateOne({ _id: id }, { $set: { status: 'rejected', reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } });
     await markKasDirty(ev.groupId);
+    await audit(ev.groupId, ev.actor, 'kas.tolak', `${proof.member.displayName}${proof.flags.length ? ` — ${proof.flags.join(', ')}` : ''}`);
     return {
       update: {
         text: '',
@@ -359,9 +361,9 @@ export async function handleKasForm(ev: FormSubmit): Promise<Reply> {
 // ---------- Slash command ----------
 
 export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Promise<Reply> {
-  if (!cmd.isAdmin) return { reply: { text: 'Hanya pengurus kelas (admin server) yang bisa mengatur kas.', private: true } };
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!isTreasurer(group, cmd)) return { reply: { text: 'Hanya bendahara atau admin server yang bisa mengatur kas.', private: true } };
   const amount = Number(cmd.options.nominal);
   const period = (cmd.options.periode as KasPeriod) ?? 'bulanan';
   const treasurerId = (cmd.options.bendahara as string | undefined) ?? group.kas?.treasurerId ?? null;
@@ -386,6 +388,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
   );
 
   await markKasDirty(cmd.groupId);
+  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${cmd.options.bendahara}` : ''}`);
   // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
   let reviewNote: string | null = null;
   const wantChannel = cmd.options.cek_bukti === 'channel' || typeof cmd.options.channel_tim === 'string';
@@ -533,6 +536,7 @@ export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway)
     { _id: group._id },
     { $set: { 'kas.sheetId': id, 'kas.sheetTitle': check.title.slice(0, 100), 'kas.sheetDirtyAt': new Date(), 'kas.sheetSyncedAt': null, 'kas.sheetError': null } },
   );
+  await audit(cmd.groupId, cmd.actor, 'kas.sheet', check.title.slice(0, 100));
   return {
     reply: {
       text: `✅ Tersambung ke **${sanitize(check.title.slice(0, 100))}**. Dalam ±1 menit aku isi tab Ringkasan, Buku Kas, Status Iuran, dan Bukti Transfer — setelah itu diperbarui otomatis.\nhttps://docs.google.com/spreadsheets/d/${id}`,
@@ -566,6 +570,7 @@ export async function kasArus(cmd: CommandInvocation, kind: 'pengeluaran' | 'pem
     createdBy: cmd.actor.platformUserId,
   });
   await markKasDirty(cmd.groupId);
+  await audit(cmd.groupId, cmd.actor, kind === 'pengeluaran' ? 'kas.keluar' : 'kas.masuk', `${rupiah(nominal)} — ${why}`);
   const after = saldo + (kind === 'pengeluaran' ? -nominal : nominal);
   return {
     reply: {
@@ -615,7 +620,7 @@ export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> 
     const kasPeriod = g.kas!.period as KasPeriod;
     const period = periodKey(at, kasPeriod);
     const stage = kasStageDue(period, at);
-    if (!stage) continue;
+    if (!stage || inQuietHours(at, g.quietHours)) continue;
     // Baru diatur → beri waktu dulu (setengah periode, maks 7 hari), jangan langsung menagih (temuan QA).
     const { start, end } = periodRange(period);
     const grace = Math.min(7 * 86400_000, (end.getTime() - start.getTime()) / 2);

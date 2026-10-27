@@ -1,5 +1,6 @@
 import { GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
+import { can } from '../team/roles.ts';
 import { mention, type ActionEvent, type CommandInvocation, type Reply } from '../types.ts';
 
 // Hak menarik persetujuan (UU PDP): data satu anggota atau seluruh kelas bisa dihapus kapan saja.
@@ -81,7 +82,7 @@ export async function dataHapusSaya(cmd: CommandInvocation): Promise<Reply> {
 }
 
 export async function dataHapusAnggota(cmd: CommandInvocation): Promise<Reply> {
-  if (!cmd.isAdmin) return { reply: { text: 'Hanya pengurus kelas yang bisa menghapus data anggota lain. Untuk datamu sendiri: `/data hapus-saya`.', private: true } };
+  if (!can(await getGroup(cmd.platform, cmd.groupId), cmd, 'kelola')) return { reply: { text: 'Hanya ketua kelas atau admin yang bisa menghapus data anggota lain. Untuk datamu sendiri: `/data hapus-saya`.', private: true } };
   const target = cmd.options.anggota as string | undefined;
   if (!target) return { reply: { text: 'Sebut anggotanya (tag).', private: true } };
   return {
@@ -111,7 +112,7 @@ export async function handleDataAction(ev: ActionEvent): Promise<Reply> {
   if (verb === 'no') return { update: { text: 'Dibatalkan. Tidak ada data yang dihapus.', actions: [] } };
   if (verb === 'mem' && arg) {
     // Diperiksa ulang saat tombol ditekan: hanya orangnya sendiri atau pengurus.
-    if (arg !== ev.actor.platformUserId && !ev.isAdmin) return { reply: { text: 'Kamu hanya bisa menghapus datamu sendiri.', private: true } };
+    if (arg !== ev.actor.platformUserId && !can(await getGroup(ev.platform, ev.groupId), ev, 'kelola')) return { reply: { text: 'Kamu hanya bisa menghapus datamu sendiri.', private: true } };
     const r = await deleteMemberData(ev.platform, ev.groupId, arg);
     console.log(`[privasi] data anggota dihapus di ${ev.groupId} oleh ${ev.actor.platformUserId}: ${JSON.stringify(r)}`);
     return {

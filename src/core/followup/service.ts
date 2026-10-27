@@ -4,6 +4,7 @@ import { listMembers } from '../groups.ts';
 import { paidStatus, periodKey, periodLabel, type KasPeriod } from '../kas/ledger.ts';
 import { ledgerEntries } from '../kas/service.ts';
 import { relevance } from '../opps/relevance.ts';
+import { inQuietHours } from '../quiet.ts';
 import { activeActions, confirmActions, detailLine, ids } from '../promises/service.ts';
 import { LABELS } from '../promises/voice.ts';
 import { formatWIB, wibParts } from '../time.ts';
@@ -36,9 +37,9 @@ const DIGEST_OPEN: Record<SpeechLevel, string> = {
 
 const groupKey = (platform: string, groupId: string) => `${platform}:${groupId}`;
 
-async function activeGroups(groupIds: string[]): Promise<Map<string, GroupDoc>> {
+async function activeGroups(groupIds: string[], at: Date): Promise<Map<string, GroupDoc>> {
   const groups = await GroupModel.find({ groupId: { $in: [...new Set(groupIds)] }, pilotMode: { $nin: ['diam', 'jeda'] } }).lean<GroupDoc[]>();
-  return new Map(groups.map((g) => [groupKey(g.platform, g.groupId), g]));
+  return new Map(groups.filter((g) => !inQuietHours(at, g.quietHours)).map((g) => [groupKey(g.platform, g.groupId), g]));
 }
 
 /** Tanya ulang sekali untuk janji yang belum dijawab "jadi/ga jadi" (jangan biarkan yang lupa lolos). */
@@ -52,7 +53,7 @@ export async function collectNudges(at: Date): Promise<OutgoingMessage[]> {
     .limit(100)
     .lean<PromiseDoc[]>();
   if (!rows.length) return [];
-  const groups = await activeGroups(rows.map((r) => r.groupId));
+  const groups = await activeGroups(rows.map((r) => r.groupId), at);
   const out: OutgoingMessage[] = [];
   for (const p of rows) {
     const g = groups.get(groupKey(p.platform, p.groupId));
@@ -80,7 +81,7 @@ export async function collectFollowUps(at: Date): Promise<OutgoingMessage[]> {
     .limit(100)
     .lean<PromiseDoc[]>();
   if (!rows.length) return [];
-  const groups = await activeGroups(rows.map((r) => r.groupId));
+  const groups = await activeGroups(rows.map((r) => r.groupId), at);
   const out: OutgoingMessage[] = [];
   for (const p of rows) {
     const g = groups.get(groupKey(p.platform, p.groupId));

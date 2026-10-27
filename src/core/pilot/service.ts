@@ -1,5 +1,7 @@
 import { GroupModel, PromiseModel, type PromiseDoc } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
+import { audit } from '../team/audit.ts';
+import { can } from '../team/roles.ts';
 import { csvCell } from '../kas/ledger.ts';
 import { formatWIB, now } from '../time.ts';
 import type { CommandInvocation, Reply } from '../types.ts';
@@ -8,9 +10,9 @@ import type { CommandInvocation, Reply } from '../types.ts';
 // membalas/menagih = baseline), minggu 2–3 mode aktif. Lihat docs/PILOT.md.
 
 export async function pilotMode(cmd: CommandInvocation): Promise<Reply> {
-  if (!cmd.isAdmin) return { reply: { text: 'Hanya pengurus kelas yang bisa mengubah mode pilot.', private: true } };
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!can(group, cmd, 'kelola')) return { reply: { text: 'Hanya ketua kelas atau admin server yang bisa mengubah mode pilot.', private: true } };
   const mode = cmd.options.mode === 'diam' ? 'diam' : cmd.options.mode === 'jeda' ? 'jeda' : 'off';
   const previous = group.pilotMode ?? 'off';
   await GroupModel.updateOne({ _id: group._id }, { $set: { pilotMode: mode } });
@@ -25,6 +27,7 @@ export async function pilotMode(cmd: CommandInvocation): Promise<Reply> {
           : '🔔 Bot sudah dalam mode aktif.',
   }[mode];
   console.log(`[pilot] ${group.className}: mode ${mode} oleh ${cmd.actor.displayName}`);
+  await audit(cmd.groupId, cmd.actor, 'pilot.mode', `${previous} → ${mode}`);
   return { reply: { private: true, text } };
 }
 
@@ -51,9 +54,9 @@ export function promisesCsv(rows: CsvRow[]): string {
 }
 
 export async function pilotEkspor(cmd: CommandInvocation): Promise<Reply> {
-  if (!cmd.isAdmin) return { reply: { text: 'Ekspor data pilot hanya untuk pengurus kelas.', private: true } };
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!can(group, cmd, 'kelola')) return { reply: { text: 'Ekspor data pilot hanya untuk ketua kelas / admin server.', private: true } };
   const rows = await PromiseModel.find({ groupId: cmd.groupId, status: { $ne: 'pending_confirm' } }).sort({ createdAt: 1 }).lean<(PromiseDoc & { createdAt: Date })[]>();
   return {
     reply: {

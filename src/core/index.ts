@@ -11,6 +11,9 @@ import { collectOppPosts, handleOppAction, handleOppLink, lombaList, lombaTambah
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
 import { HELP_WORDS, helpText } from './help.ts';
+import { jamTenangCommand } from './quiet.ts';
+import { can } from './team/roles.ts';
+import { timHapus, timLihat, timTambah } from './team/service.ts';
 import { collectFollowUps, collectNudges, collectWeeklyDigests } from './followup/service.ts';
 import { pilotEkspor, pilotMode } from './pilot/service.ts';
 import { collectReminders, handleReminderAction, handleReminderRequest, ingetinCommand } from './reminders/service.ts';
@@ -50,10 +53,12 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
   const opsFor = (p: Platform) => platformOps.get(p) ?? {};
 
   async function setup(cmd: CommandInvocation): Promise<Reply> {
-    if (!cmd.isAdmin) return fail('Hanya pengurus kelas (admin server) yang bisa menjalankan /setup.');
+    const existing = await getGroup(cmd.platform, cmd.groupId);
+    // Kelas baru: admin server. Sudah diatur: admin atau ketua kelas.
+    if (!(existing ? can(existing, cmd, 'kelola') : cmd.isAdmin)) return fail('Hanya ketua kelas atau admin server yang bisa menjalankan /setup.');
     // Tanpa opsi → wawancara santai di channel ini (cara utama); dengan opsi → cara cepat.
     if (!cmd.options.kelas) {
-      const configured = Boolean(await getGroup(cmd.platform, cmd.groupId));
+      const configured = Boolean(existing);
       return { reply: { text: 'Oke, aku mulai wawancaranya di channel ini ya 👇', private: true }, messages: await startOnboarding(cmd.platform, cmd.groupId, cmd.channelId, configured) };
     }
     const tutur = cmd.options.tutur as SpeechLevel | undefined;
@@ -106,6 +111,10 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     'pilot.mode': pilotMode,
     'pilot.ekspor': pilotEkspor,
     ingetin: ingetinCommand,
+    'jam-tenang': jamTenangCommand,
+    'tim.lihat': timLihat,
+    'tim.tambah': (cmd) => timTambah(cmd, opsFor(cmd.platform)),
+    'tim.hapus': timHapus,
     'data.hapus-saya': dataHapusSaya,
     'data.hapus-anggota': dataHapusAnggota,
     'data.hapus-kelas': dataHapusKelas,

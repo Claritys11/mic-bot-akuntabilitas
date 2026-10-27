@@ -86,15 +86,26 @@ export class SheetsClient {
     try {
       const id = encodeURIComponent(spreadsheetId);
       const r = await this.call<{ properties: { title: string } }>(`${id}?fields=properties.title`);
-      // Penanda kelas di tab Ringkasan (kalau tab belum ada → belum pernah diisi bot).
-      const values = await this.call<{ values?: string[][] }>(`${id}/values/${encodeURIComponent("'Ringkasan'!A1:B40")}`).catch(() => ({ values: [] as string[][] }));
-      const row = (values.values ?? []).find((v) => v[0] === MARKER_LABEL);
-      return { ok: true, title: r.properties.title, marker: row?.[1] ?? null };
+      return { ok: true, title: r.properties.title, marker: await this.readMarker(spreadsheetId) };
     } catch (err) {
       const status = err instanceof SheetsError ? err.status : 0;
       if (status === 403) return { ok: false, reason: `belum dibagikan ke ${this.serviceEmail} sebagai Editor` };
       if (status === 404) return { ok: false, reason: 'spreadsheet tidak ditemukan — cek lagi linknya' };
       return { ok: false, reason: (err as Error).message };
+    }
+  }
+
+  /**
+   * Penanda kelas di tab Ringkasan. null HANYA kalau tab itu memang belum ada (400 "Unable to parse range");
+   * error lain dilempar → pemanggil menolak (gagal tertutup, jangan sampai menimpa sheet kelas lain).
+   */
+  async readMarker(spreadsheetId: string): Promise<string | null> {
+    try {
+      const v = await this.call<{ values?: string[][] }>(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent("'Ringkasan'!A1:B40")}`);
+      return (v.values ?? []).find((row) => row[0] === MARKER_LABEL)?.[1] ?? null;
+    } catch (err) {
+      if (err instanceof SheetsError && err.status === 400 && /parse range/i.test(err.message)) return null;
+      throw err;
     }
   }
 

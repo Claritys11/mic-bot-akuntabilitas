@@ -113,7 +113,8 @@ function addOption(b: SlashCommandBuilder | SlashCommandSubcommandBuilder, o: Op
       });
       break;
     case 'integer':
-      b.addIntegerOption((x) => base(x).setMinValue(1));
+      // Jam boleh 0; nominal/angka lain tetap ≥ 1.
+      b.addIntegerOption((x) => base(x).setMinValue(o.name === 'mulai' || o.name === 'selesai' ? 0 : 1));
       break;
     case 'boolean':
       b.addBooleanOption((x) => base(x));

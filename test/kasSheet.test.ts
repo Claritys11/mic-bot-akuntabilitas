@@ -23,11 +23,13 @@ describe('isi Google Sheet kas', () => {
     ],
     proofs: [{ createdAt: d('2026-10-05T02:00:00Z'), memberName: 'Ani', nominal: 10000, period: '2026-10', status: 'approved', flags: ['recipient_mismatch'] }],
     flagText: (f) => `[${f}]`,
+    audits: [{ at: d('2026-10-05T03:00:00Z'), actorName: 'Sari', action: 'kas.setujui', detail: 'Ani Rp10.000 (Oktober 2026)' }],
   });
   const tab = (t: string) => tabs.find((x) => x.title === t)!.rows;
 
   test('empat tab dengan header', () => {
-    expect(tabs.map((t) => t.title)).toEqual(['Ringkasan', 'Buku Kas', 'Status Iuran', 'Bukti Transfer']);
+    expect(tabs.map((t) => t.title)).toEqual(['Ringkasan', 'Buku Kas', 'Status Iuran', 'Bukti Transfer', 'Jejak Audit']);
+    expect(tab('Jejak Audit')[1]).toEqual(['2026-10-05 10:00', 'Sari', 'Setujui bukti', 'Ani Rp10.000 (Oktober 2026)']);
   });
   test('ringkasan: saldo, masuk, keluar, lunas/belum', () => {
     const r = Object.fromEntries(tab('Ringkasan').filter((x) => x.length === 2));
