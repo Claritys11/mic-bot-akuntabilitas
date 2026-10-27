@@ -27,9 +27,11 @@ besar daripada efek bot. Maka satu kelas dibandingkan dengan dirinya sendiri:
 
 ## Checklist sebelum minggu diam dimulai
 
-- [ ] Formulir persetujuan wali terkumpul (sebutkan hak menarik persetujuan → `/data hapus-saya`).
+- [ ] Formulir persetujuan wali terkumpul. Sebutkan hak menarik persetujuan (`/data hapus-saya`) dan bahwa
+      data yang dihapus **hilang permanen paling lambat 14 hari** (masa simpan backup).
 - [ ] `OPERATOR_DISCORD_ID` diisi → kamu dapat DM kalau bot sempat mati atau scheduler macet.
 - [ ] Backup harian aktif: `crontab -e` → `0 2 * * * cd /path/repo && bash scripts/backup.sh >> backups/backup.log 2>&1`.
+      Simpan di disk terenkripsi dan jangan di folder yang tersinkron (Google Drive/Dropbox dll.).
 - [ ] Pengurus tahu rem darurat: `/pilot mode jeda` menghentikan bot seketika di kelas itu.
 - [ ] `bun run demo:check` lulus; lalu `/pilot mode diam`.
 
