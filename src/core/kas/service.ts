@@ -25,10 +25,10 @@ import {
 } from '../types.ts';
 import { inQuietHours } from '../quiet.ts';
 import { audit, memberName } from '../team/audit.ts';
-import { can } from '../team/roles.ts';
+import { can, rolesOf } from '../team/roles.ts';
 import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
 import { sheetMarker, spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
-import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
+import { allocatePayment, nextPeriod, paidStatus, previousPeriod, rateFor, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry, type Rate } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
 
@@ -63,6 +63,56 @@ const refHashOf = (ref: string) => createHash('sha256').update(normalizeRef(ref)
 const SCRUB_AFTER_REVIEW = { sender: null, bank: null, recipient: null, refId: null };
 
 /** Admin, bendahara (peran), atau tim inti kas yang terdaftar eksplisit — bukan "siapa pun yang bisa lihat channel". */
+/** Iuran per periode untuk kelas ini (riwayat tarif). */
+export function rateOf(g: Pick<GroupDoc, 'kas'>): (period: string) => number {
+  const current = { amount: g.kas?.amount ?? 0, period: (g.kas?.period ?? 'bulanan') as KasPeriod };
+  return (p) => rateFor(g.kas?.rates as Rate[] | undefined, current, p);
+}
+
+/** Periode pertama yang ditagih: tarif pertama yang berlaku / saat kas diatur (maks 12 periode ke belakang). */
+function billingStart(g: GroupDoc, at: Date): string {
+  const kasPeriod = (g.kas?.period ?? 'bulanan') as KasPeriod;
+  const current = periodKey(at, kasPeriod);
+  let floor = current;
+  for (let n = 0; n < 11; n++) floor = previousPeriod(floor, kasPeriod);
+  const firstRate = (g.kas?.rates ?? []).find((r) => r.period === kasPeriod && r.from && r.from !== '0000')?.from;
+  const since = firstRate ?? (g.kas?.setAt ? periodKey(new Date(g.kas.setAt), kasPeriod) : current);
+  return since > floor ? since : floor;
+}
+
+/** Simpan alokasi pembayaran (bukti transfer atau tunai) ke buku kas. */
+async function recordPayment(g: GroupDoc, input: { platform: string; groupId: string; member: { platformUserId: string; displayName: string }; nominal: number; note: string; proofId?: unknown; actorId: string }) {
+  const kasPeriod = (g.kas?.period ?? 'bulanan') as KasPeriod;
+  const at = now();
+  const parts = allocatePayment({
+    nominal: input.nominal,
+    memberId: input.member.platformUserId,
+    entries: await ledgerEntries(input.groupId),
+    kasPeriod,
+    rate: rateOf(g),
+    start: billingStart(g, at),
+    current: periodKey(at, kasPeriod),
+  });
+  await TransactionModel.insertMany(
+    parts.map((p) => ({
+      platform: input.platform,
+      groupId: input.groupId,
+      memberId: input.member.platformUserId,
+      memberName: input.member.displayName,
+      amount: p.amount,
+      kind: 'iuran',
+      period: p.period,
+      note: input.note,
+      proofId: input.proofId ?? null,
+      createdBy: input.actorId,
+    })),
+  );
+  await markKasDirty(input.groupId);
+  return parts;
+}
+
+const allocationText = (parts: { period: string; amount: number }[]) => parts.map((p) => `${periodLabel(p.period)}${p.amount ? ` ${rupiah(p.amount)}` : ''}`).join(', ');
+
 const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) => can(g, ctx, 'kas');
 
 /** Gambar di channel kas → ekstraksi vision → verifikasi → tunggu persetujuan bendahara. */
@@ -257,31 +307,17 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
   ).lean();
   if (!proof) return { reply: { text: 'Bukti ini sudah diproses (atau milikmu sendiri — perlu dicek tim inti lain).', private: true } };
 
-  // Bayar beberapa periode sekaligus → pecah per periode agar rekap tepat.
-  const amount = group.kas?.amount ?? 0;
-  const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
-  const count = amount > 0 && nominal % amount === 0 ? Math.min(nominal / amount, 12) : 1;
-  const per = count > 1 ? amount : nominal;
-  let period = proof.period;
-  const entries = [];
-  for (let i = 0; i < count; i++) {
-    entries.push({
-      platform: ev.platform,
-      groupId: ev.groupId,
-      memberId: proof.member.platformUserId,
-      memberName: proof.member.displayName,
-      amount: i === count - 1 ? nominal - per * (count - 1) : per,
-      kind: 'iuran',
-      period,
-      // 4 karakter terakhir cukup untuk mencocokkan dengan mutasi bank tanpa menyimpan nomor lengkap.
-      note: proof.refId ? `ref …${normalizeRef(proof.refId).slice(-4)}` : '',
-      proofId: proof._id,
-      createdBy: ev.actor.platformUserId,
-    });
-    period = periodKey(periodRange(period).end, kasPeriod);
-  }
-  await TransactionModel.insertMany(entries);
-  await markKasDirty(ev.groupId);
+  // Ke periode tertua yang belum lunas dulu (rapel / sebagian / di muka), dengan tarif per periode.
+  const entries = await recordPayment(group, {
+    platform: ev.platform,
+    groupId: ev.groupId,
+    member: proof.member,
+    nominal,
+    // 4 karakter terakhir cukup untuk mencocokkan dengan mutasi bank tanpa menyimpan nomor lengkap.
+    note: proof.refId ? `ref …${normalizeRef(proof.refId).slice(-4)}` : '',
+    proofId: proof._id,
+    actorId: ev.actor.platformUserId,
+  });
   await audit(ev.groupId, ev.actor, 'kas.setujui', `${proof.member.displayName} ${rupiah(nominal)} (${entries.map((e) => periodLabel(e.period)).join(', ')})`);
 
   return {
@@ -299,8 +335,15 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
 }
 
 export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
-  const [, verb, id] = ev.actionId.split(':');
+  const [, verb, id, extra] = ev.actionId.split(':');
   const group = await getGroup(ev.platform, ev.groupId);
+  if (verb === 'cashno') return { update: { text: 'Dibatalkan — tidak ada yang dicatat.', card: undefined, actions: [] } };
+  if (verb === 'cash') {
+    if (!group || !isTreasurer(group, ev)) return { reply: { text: 'Hanya bendahara / tim inti kas yang bisa mencatat bayar tunai.', private: true } };
+    const nominal = Number(extra);
+    if (!id || !Number.isInteger(nominal) || nominal <= 0 || nominal > 10_000_000) return { reply: { text: 'Data tidak valid.', private: true } };
+    return saveCash(ev, group, id, nominal);
+  }
   if (!group || !id || !isValidObjectId(id)) return { reply: { text: 'Data tidak ditemukan.', private: true } };
   if (!isTreasurer(group, ev)) return { reply: { text: 'Hanya bendahara atau pengurus kelas yang bisa memproses bukti kas.', private: true } };
   const proof = await KasProofModel.findOne({ _id: id, groupId: ev.groupId }).lean();
@@ -363,11 +406,28 @@ export async function handleKasForm(ev: FormSubmit): Promise<Reply> {
 export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Promise<Reply> {
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
-  if (!isTreasurer(group, cmd)) return { reply: { text: 'Hanya bendahara atau admin server yang bisa mengatur kas.', private: true } };
+  // Atur iuran: bendahara (peran) atau admin — bukan sekadar anggota tim pemeriksa bukti.
+  const isBendahara = cmd.isAdmin || rolesOf(group, cmd.actor.platformUserId).includes('bendahara');
+  if (!isBendahara) return { reply: { text: 'Hanya bendahara atau admin server yang bisa mengatur kas.', private: true } };
+  // Mengganti bendahara / tim inti = urusan ketua atau admin (sebaiknya lewat /tim).
+  const sensitive = ['bendahara', 'tambah_tim', 'hapus_tim'].some((k) => cmd.options[k] !== undefined);
+  if (sensitive && !can(group, cmd, 'kelola')) return { reply: { text: 'Mengganti bendahara / tim inti hanya bisa oleh ketua kelas atau admin — pakai /tim.', private: true } };
   const amount = Number(cmd.options.nominal);
   const period = (cmd.options.periode as KasPeriod) ?? 'bulanan';
   const treasurerId = (cmd.options.bendahara as string | undefined) ?? group.kas?.treasurerId ?? null;
   if (!Number.isFinite(amount) || amount <= 0) return { reply: { text: 'Nominal harus angka > 0.', private: true } };
+  // Riwayat tarif: perubahan berlaku mulai periode berikutnya (atau periode ini kalau diminta / baru pertama kali).
+  const changed = amount !== group.kas?.amount || period !== group.kas?.period;
+  const currentKey = periodKey(now(), period);
+  const startNow = !group.kas?.amount || cmd.options.mulai === 'ini' || period !== group.kas?.period;
+  const from = startNow ? currentKey : nextPeriod(currentKey, period);
+  const rates: Rate[] = [...((group.kas?.rates as Rate[] | undefined) ?? [])];
+  if (changed) {
+    if (!rates.length && group.kas?.amount) rates.push({ amount: group.kas.amount, period: (group.kas.period ?? 'bulanan') as KasPeriod, from: '0000' });
+    const kept = rates.filter((r) => !(r.period === period && r.from >= from));
+    kept.push({ amount, period, from });
+    rates.splice(0, rates.length, ...kept);
+  }
   const recipients =
     typeof cmd.options.penerima === 'string'
       ? cmd.options.penerima.split(',').map((r) => r.trim().slice(0, 80)).filter(Boolean).slice(0, 5)
@@ -381,6 +441,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
         'kas.period': period,
         'kas.treasurerId': treasurerId,
         'kas.recipients': recipients,
+        'kas.rates': rates,
         // Nominal/periode berubah = mulai lagi masa tenggang sebelum pengingat otomatis.
         ...(amount !== group.kas?.amount || period !== group.kas?.period ? { 'kas.setAt': now() } : {}),
       },
@@ -388,7 +449,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
   );
 
   await markKasDirty(cmd.groupId);
-  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${await memberName(cmd.platform, cmd.groupId, cmd.options.bendahara)}` : ''}`);
+  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${changed ? ` mulai ${periodLabel(from)}` : ''}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${await memberName(cmd.platform, cmd.groupId, cmd.options.bendahara)}` : ''}`);
   // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
   let reviewNote: string | null = null;
   const wantChannel = cmd.options.cek_bukti === 'channel' || typeof cmd.options.channel_tim === 'string';
@@ -428,7 +489,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
         title: '💰 Kas kelas diatur',
         tone: 'success',
         fields: [
-          { name: 'Iuran', value: `${rupiah(amount)} / ${period === 'bulanan' ? 'bulan' : 'minggu'}`, inline: true },
+          { name: 'Iuran', value: `${rupiah(amount)} / ${period === 'bulanan' ? 'bulan' : 'minggu'}${changed ? ` (mulai ${periodLabel(from)})` : ''}`, inline: true },
           { name: 'Bendahara', value: treasurerId ? mention({ platformUserId: treasurerId }) : '—', inline: true },
           { name: 'Channel bukti', value: group.kasChannelId ? channelRef(group.kasChannelId) : 'belum diatur di /setup', inline: true },
           ...(reviewNote ? [{ name: 'Bukti dicek di', value: reviewNote, inline: false }] : []),
@@ -465,7 +526,7 @@ export async function kasRekap(cmd: CommandInvocation): Promise<Reply> {
   const status = paidStatus(
     members.map((m) => ({ id: m.platformUserId, name: m.displayName })),
     entries,
-    group.kas.amount,
+    rateOf(group),
     period,
   );
   const total = entries.reduce((s, e) => s + e.amount, 0);
@@ -542,6 +603,67 @@ export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway)
       text: `✅ Tersambung ke **${sanitize(check.title.slice(0, 100))}**. Dalam ±1 menit aku isi tab Ringkasan, Buku Kas, Status Iuran, dan Bukti Transfer — setelah itu diperbarui otomatis.\nhttps://docs.google.com/spreadsheets/d/${id}`,
       private: true,
     },
+  };
+}
+
+/** /kas tunai anggota nominal — pratinjau alokasi dulu, simpan lewat tombol (bendahara). */
+export async function kasTunai(cmd: CommandInvocation): Promise<Reply> {
+  const group = await getGroup(cmd.platform, cmd.groupId);
+  if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  if (!isTreasurer(group, cmd)) return { reply: { text: 'Hanya bendahara / tim inti kas yang bisa mencatat bayar tunai.', private: true } };
+  if (!group.kas?.amount) return { reply: { text: 'Atur iuran dulu: /kas atur', private: true } };
+  const who = cmd.options.anggota as string | undefined;
+  const nominal = Number(cmd.options.nominal);
+  if (!who || !Number.isInteger(nominal) || nominal <= 0 || nominal > 10_000_000) return { reply: { text: 'Sebut anggotanya & nominal rupiah.', private: true } };
+  if (who === cmd.actor.platformUserId && !cmd.isAdmin) return { reply: { text: 'Bayar tunai milikmu sendiri dicatat oleh anggota tim inti lain ya 🙏', private: true } };
+  const at = now();
+  const kasPeriod = group.kas.period as KasPeriod;
+  const parts = allocatePayment({
+    nominal,
+    memberId: who,
+    entries: await ledgerEntries(cmd.groupId),
+    kasPeriod,
+    rate: rateOf(group),
+    start: billingStart(group, at),
+    current: periodKey(at, kasPeriod),
+  });
+  return {
+    reply: {
+      private: true,
+      card: {
+        title: `💵 Bayar tunai ${rupiah(nominal)}`,
+        tone: 'info',
+        description: `Dari ${mention({ platformUserId: who })} → dialokasikan ke **${allocationText(parts)}** (bulan tertua yang belum lunas dulu).`,
+        footer: 'Cek dulu, lalu simpan. Setelah disimpan tidak bisa diubah — koreksi = transaksi baru.',
+      },
+      actions: [
+        { id: `k:cash:${who}:${nominal}`, label: '✅ Simpan', kind: 'success' },
+        { id: 'k:cashno:x', label: 'Batal', kind: 'secondary' },
+      ],
+    },
+  };
+}
+
+async function saveCash(ev: ActionEvent, group: GroupDoc, who: string, nominal: number): Promise<Reply> {
+  if (who === ev.actor.platformUserId && !ev.isAdmin) return { reply: { text: 'Bayar tunai milikmu sendiri dicatat anggota tim inti lain ya 🙏', private: true } };
+  const member = (await listMembers(ev.platform, ev.groupId)).find((m) => m.platformUserId === who) ?? { platformUserId: who, displayName: await memberName(ev.platform, ev.groupId, who) };
+  const parts = await recordPayment(group, {
+    platform: ev.platform,
+    groupId: ev.groupId,
+    member,
+    nominal,
+    note: `tunai, diterima ${ev.actor.displayName}`,
+    actorId: ev.actor.platformUserId,
+  });
+  await audit(ev.groupId, ev.actor, 'kas.tunai', `${member.displayName} ${rupiah(nominal)} (${allocationText(parts)})`);
+  return {
+    update: { text: `✅ Tunai ${rupiah(nominal)} dari ${mention({ platformUserId: who })} tercatat: ${allocationText(parts)}.`, card: undefined, actions: [] },
+    messages: [
+      {
+        to: { kind: 'dm', member: { ...member, platform: ev.platform, groupId: ev.groupId }, fallbackChannelId: group.kasChannelId ?? group.mainChannelId, fallbackText: `${mention({ platformUserId: who })}, ada kabar soal kasmu — buka DM dari aku ya 🙏` },
+        text: `Bayar tunai ${rupiah(nominal)} ke ${ev.actor.displayName} sudah kucatat untuk ${allocationText(parts)} ✅ Makasih!`,
+      },
+    ],
   };
 }
 
@@ -627,7 +749,8 @@ export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> 
     const since = g.kas?.setAt ?? (g as { createdAt?: Date }).createdAt;
     if (since && at.getTime() - new Date(since).getTime() < grace) continue;
     const [members, entries] = await Promise.all([listMembers(g.platform as Platform, g.groupId), ledgerEntries(g.groupId)]);
-    const { unpaid } = paidStatus(members.map((m) => ({ id: m.platformUserId, name: m.displayName })), entries, g.kas!.amount!, period);
+    const rate = rateOf(g);
+    const { unpaid } = paidStatus(members.map((m) => ({ id: m.platformUserId, name: m.displayName })), entries, rate, period);
     // Anggota yang baru bergabung juga diberi masa tenggang yang sama.
     const joined = new Map(
       (await MemberModel.find({ platform: g.platform, groupId: g.groupId }, { platformUserId: 1, createdAt: 1 }).lean()).map((m) => [m.platformUserId, (m as { createdAt?: Date }).createdAt]),
@@ -644,7 +767,7 @@ export async function collectKasReminders(at: Date): Promise<OutgoingMessage[]> 
       const text = kasText(
         g.speechLevel as SpeechLevel,
         stage,
-        { nama: mention(member), periode: periodLabel(period), nominal: rupiah(g.kas!.amount! - u.paidAmount) },
+        { nama: mention(member), periode: periodLabel(period), nominal: rupiah(rate(period) - u.paidAmount) },
         `${g.groupId}:${period}:${u.id}:${stage}`,
       );
       // DM tertutup → jangan umumkan siapa yang belum bayar & berapa di channel.

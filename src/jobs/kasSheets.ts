@@ -1,6 +1,6 @@
 import { listMembers } from '../core/groups.ts';
 import { buildKasSheet, sheetMarker } from '../core/kas/sheet.ts';
-import { ledgerEntries } from '../core/kas/service.ts';
+import { ledgerEntries, rateOf } from '../core/kas/service.ts';
 import { FLAG_TEXT, type ProofFlag } from '../core/kas/verify.ts';
 import { now } from '../core/time.ts';
 import type { Platform } from '../core/types.ts';
@@ -20,6 +20,7 @@ export async function syncKasSheet(client: SheetsClient, g: GroupDoc): Promise<v
     className: g.className,
     marker: sheetMarker(g.platform, g.groupId),
     amount: g.kas?.amount ?? 0,
+    rate: rateOf(g),
     period: (g.kas?.period ?? 'bulanan') as 'bulanan' | 'mingguan',
     now: now(),
     members: members.map((m) => ({ id: m.platformUserId, name: m.displayName })),

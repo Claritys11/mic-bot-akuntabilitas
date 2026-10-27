@@ -4,7 +4,7 @@ import { askPrompt } from '../../llm/prompts/ask.ts';
 import { chatJson, type LLMProvider } from '../../llm/provider.ts';
 import { listMembers } from '../groups.ts';
 import { paidStatus, periodKey, periodLabel, rupiah, type KasPeriod } from '../kas/ledger.ts';
-import { ledgerEntries } from '../kas/service.ts';
+import { ledgerEntries, rateOf } from '../kas/service.ts';
 import { formatWIB, now } from '../time.ts';
 import { sanitize, type IncomingMessage, type OutgoingMessage, type SpeechLevel } from '../types.ts';
 import { asTranscript, recentChat } from './context.ts';
@@ -84,7 +84,7 @@ async function gatherFacts(msg: IncomingMessage, group: GroupDoc, topics: Topic[
     const status = paidStatus(
       members.map((m) => ({ id: m.platformUserId, name: m.displayName })),
       entries,
-      group.kas.amount,
+      rateOf(group),
       period,
     );
     const mine = [...status.paid, ...status.unpaid].find((s) => s.id === msg.author.platformUserId);

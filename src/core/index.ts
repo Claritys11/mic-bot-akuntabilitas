@@ -2,7 +2,7 @@ import type { LLMProvider } from '../llm/provider.ts';
 import { collectPromiseReminders } from './billing/service.ts';
 import { answerQuestion } from './chat/ask.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
-import { collectUndeliveredProofs, kasArus, kasSheet } from './kas/service.ts';
+import { collectUndeliveredProofs, kasArus, kasSheet, kasTunai } from './kas/service.ts';
 import type { KasSheetGateway } from './kas/sheet.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
@@ -106,6 +106,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     'kas.ekspor': kasEkspor,
     'kas.sheet': (cmd) => kasSheet(cmd, deps.sheets),
     'kas.keluar': (cmd) => kasArus(cmd, 'pengeluaran'),
+    'kas.tunai': kasTunai,
     'kas.masuk': (cmd) => kasArus(cmd, 'pemasukan'),
     rangkum: (cmd) => rangkum(llm, cmd),
     'pilot.mode': pilotMode,

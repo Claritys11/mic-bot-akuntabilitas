@@ -2,7 +2,7 @@ import { GroupModel, OpportunityModel, PromiseModel, type GroupDoc, type Promise
 import { PRIVATE_FALLBACK } from '../billing/templates.ts';
 import { listMembers } from '../groups.ts';
 import { paidStatus, periodKey, periodLabel, type KasPeriod } from '../kas/ledger.ts';
-import { ledgerEntries } from '../kas/service.ts';
+import { ledgerEntries, rateOf } from '../kas/service.ts';
 import { relevance } from '../opps/relevance.ts';
 import { inQuietHours } from '../quiet.ts';
 import { activeActions, confirmActions, detailLine, ids } from '../promises/service.ts';
@@ -144,7 +144,7 @@ export async function digestText(g: GroupDoc, at: Date): Promise<string | null> 
       const { paid } = paidStatus(
         members.map((m) => ({ id: m.platformUserId, name: m.displayName })),
         await ledgerEntries(g.groupId),
-        g.kas.amount,
+        rateOf(g),
         period,
       );
       lines.push(`💰 Kas ${periodLabel(period)}: ${paid.length} dari ${members.length} sudah lunas. Yang belum, santai aja — kirim bukti kapan pun 🙏`);

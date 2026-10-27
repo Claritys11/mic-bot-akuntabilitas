@@ -4,7 +4,7 @@ import { addReviewer, removeReviewer } from '../kas/review.ts';
 import { markKasDirty } from '../kas/service.ts';
 import { channelRef, mention, type CommandInvocation, type PlatformOps, type Reply } from '../types.ts';
 import { audit, memberName } from './audit.ts';
-import { can, MAX_PER_ROLE, ROLE_LABEL, ROLES, type Role } from './roles.ts';
+import { can, MAX_PER_ROLE, ROLE_LABEL, ROLES, rolesOf, type Role } from './roles.ts';
 
 const deny = (text: string): Reply => ({ reply: { text, private: true } });
 
@@ -38,6 +38,13 @@ export async function timTambah(cmd: CommandInvocation, ops: PlatformOps = {}): 
   const role = cmd.options.peran as Role;
   const who = cmd.options.anggota as string | undefined;
   if (!ROLES.includes(role) || !who) return deny('Pilih peran & tag anggotanya.');
+  // Pemisahan tugas: tidak memberi peran ke diri sendiri; peran bendahara (pegang uang) hanya diberikan
+  // admin atau bendahara yang sudah ada — kecuali kelas belum punya bendahara sama sekali.
+  if (who === cmd.actor.platformUserId && !cmd.isAdmin) return deny('Peran tidak bisa diberikan ke diri sendiri — minta admin atau ketua lain.');
+  const hasBendahara = Boolean(g.kas?.treasurerId || g.roles?.bendahara?.length);
+  if (role === 'bendahara' && hasBendahara && !cmd.isAdmin && !rolesOf(g, cmd.actor.platformUserId).includes('bendahara')) {
+    return deny('Menambah bendahara hanya bisa oleh admin server atau bendahara yang sudah ada.');
+  }
   const current = role === 'bendahara' ? new Set([...(g.roles?.bendahara ?? []), ...(g.kas?.treasurerId ? [g.kas.treasurerId] : [])]) : new Set(g.roles?.[role] ?? []);
   if (current.has(who)) return deny(`${mention({ platformUserId: who })} sudah jadi ${role}.`);
   if (current.size >= MAX_PER_ROLE[role]) return deny(`${ROLE_LABEL[role]} maksimal ${MAX_PER_ROLE[role]} orang. Hapus dulu salah satunya: /tim hapus`);
@@ -64,6 +71,11 @@ export async function timHapus(cmd: CommandInvocation): Promise<Reply> {
   if (!who) return deny('Tag anggotanya.');
   const role = cmd.options.peran as Role | undefined;
   const roles = role ? [role] : [...ROLES];
+  // Mencopot ketua / bendahara orang lain butuh admin (ketua tidak bisa menyingkirkan rekannya sendiri).
+  const targetRoles = rolesOf(g, who).filter((r) => roles.includes(r));
+  if (!cmd.isAdmin && who !== cmd.actor.platformUserId && targetRoles.some((r) => r === 'ketua' || r === 'bendahara')) {
+    return deny('Mencopot ketua atau bendahara lain hanya bisa oleh admin server.');
+  }
   const set: Record<string, unknown> = {};
   if (roles.includes('bendahara') && g.kas?.treasurerId === who) {
     // Bendahara utama dicopot → pindah ke bendahara lain (kalau ada).

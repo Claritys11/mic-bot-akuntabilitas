@@ -1,4 +1,4 @@
-import { GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
+import { AuditModel, ReminderModel, GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { can } from '../team/roles.ts';
 import { mention, type ActionEvent, type CommandInvocation, type Reply } from '../types.ts';
@@ -26,7 +26,15 @@ export interface DeleteReport {
  * dan data anggotanya dihapus. Transaksi ledger tidak dihapus (saldo kelas harus tetap benar) tapi
  * namanya dianonimkan — satu-satunya pengecualian aturan append-only, lewat driver langsung.
  */
+/** Hapus nama anggota dari teks detail jejak audit (mis. "Budi Rp10.000"). */
+async function anonymizeAuditDetails(groupId: string, name: string): Promise<void> {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rows = await AuditModel.find({ groupId, detail: { $regex: escaped } }, { detail: 1 }).lean();
+  await Promise.all(rows.map((r) => AuditModel.updateOne({ _id: r._id }, { $set: { detail: r.detail.split(name).join(DELETED) } })));
+}
+
 export async function deleteMemberData(platform: string, groupId: string, userId: string): Promise<DeleteReport> {
+  const member = await MemberModel.findOne({ platform, groupId, platformUserId: userId }, { displayName: 1 }).lean();
   const [janji, bukti, buffer, tx] = await Promise.all([
     PromiseModel.deleteMany({ groupId, 'owner.platformUserId': userId }),
     KasProofModel.deleteMany({ groupId, 'member.platformUserId': userId }),
@@ -38,8 +46,14 @@ export async function deleteMemberData(platform: string, groupId: string, userId
     // Janji milik orang lain yang dibuat anggota ini tetap ada, tapi pembuatnya dianonimkan.
     PromiseModel.updateMany({ groupId, 'createdBy.platformUserId': userId }, { $set: { createdBy: { platformUserId: 'deleted', displayName: DELETED } } }),
     KasReminderModel.deleteMany({ groupId, memberId: userId }),
+    ReminderModel.deleteMany({ groupId, 'member.platformUserId': userId }),
     MemberModel.deleteOne({ platform, groupId, platformUserId: userId }),
     GroupModel.updateOne({ platform, groupId, 'kas.treasurerId': userId }, { $set: { 'kas.treasurerId': null } }),
+    // Hak akses ikut hilang: semua peran & keanggotaan tim inti kas.
+    GroupModel.updateOne({ platform, groupId }, { $pull: { 'roles.ketua': userId, 'roles.bendahara': userId, 'roles.sekretaris': userId, 'kas.reviewerIds': userId } }),
+    // Jejak audit: tindakannya tetap tercatat (transparansi kas), tapi identitasnya dianonimkan.
+    AuditModel.updateMany({ groupId, actorId: userId }, { $set: { actorId: 'deleted', actorName: DELETED } }),
+    ...(member?.displayName ? [anonymizeAuditDetails(groupId, member.displayName)] : []),
   ]);
   // Nama yang dihapus juga harus hilang dari Google Sheet laporan kas.
   await GroupModel.updateOne({ groupId, 'kas.sheetId': { $ne: null } }, { $set: { 'kas.sheetDirtyAt': new Date() } });
@@ -59,6 +73,8 @@ export async function deleteGroupData(platform: string, groupId: string): Promis
     OppPostModel.deleteMany({ groupId }),
     OnboardingModel.deleteMany({ platform, groupId }),
     WaPromptModel.deleteMany({ groupId }),
+    AuditModel.deleteMany({ groupId }),
+    ReminderModel.deleteMany({ groupId }),
     GroupModel.deleteMany({ platform, groupId }),
   ]);
   return results.reduce((n, r) => n + r.deletedCount, 0);

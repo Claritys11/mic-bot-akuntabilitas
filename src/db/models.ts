@@ -38,6 +38,8 @@ const GroupSchema = new Schema(
       treasurerId: { type: String, default: null },
       // Kapan iuran diatur — jangan langsung menagih kas yang baru saja diatur.
       setAt: { type: Date, default: null },
+      // Riwayat tarif: perubahan iuran tidak mengubah status lunas periode lama.
+      rates: { type: [{ amount: Number, period: String, from: String, _id: false }], default: [] },
       // Nama rekening/e-wallet tujuan kas yang sah; bukti dengan penerima lain ditandai.
       recipients: { type: [String], default: [] },
       // Bukti dicek di channel tim inti (null = DM bendahara / channel kas).

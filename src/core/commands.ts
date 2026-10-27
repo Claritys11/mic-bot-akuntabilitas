@@ -59,6 +59,15 @@ export const COMMANDS: CommandSpec[] = [
           { name: 'nominal', description: 'Iuran per periode (rupiah)', type: 'integer', required: true },
           { name: 'periode', description: 'Periode iuran', type: 'string', required: true, choices: [{ name: 'mingguan', value: 'mingguan' }, { name: 'bulanan', value: 'bulanan' }] },
           { name: 'bendahara', description: 'Bendahara kelas', type: 'user' },
+          {
+            name: 'mulai',
+            description: 'Perubahan iuran berlaku mulai (default: periode depan)',
+            type: 'string',
+            choices: [
+              { name: 'periode ini', value: 'ini' },
+              { name: 'periode depan', value: 'depan' },
+            ],
+          },
           { name: 'penerima', description: 'Nama rekening/e-wallet tujuan kas, pisahkan koma (untuk cek bukti)', type: 'string' },
           {
             name: 'cek_bukti',
@@ -80,6 +89,14 @@ export const COMMANDS: CommandSpec[] = [
         name: 'sheet',
         description: 'Laporan kas otomatis di Google Sheets (pengurus)',
         options: [{ name: 'link', description: 'Link Google Sheet yang sudah dibagikan ke bot (kosong = cara pakai & status; "putus" = berhenti)', type: 'string' }],
+      },
+      {
+        name: 'tunai',
+        description: 'Catat bayar kas tunai (bendahara) — dialokasikan ke bulan tertua yang belum lunas',
+        options: [
+          { name: 'anggota', description: 'Yang membayar', type: 'user', required: true },
+          { name: 'nominal', description: 'Rupiah', type: 'integer', required: true },
+        ],
       },
       {
         name: 'keluar',

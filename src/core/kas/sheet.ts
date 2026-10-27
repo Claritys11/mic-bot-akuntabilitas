@@ -24,6 +24,8 @@ const HISTORY_PERIODS = 6;
 
 export interface KasSheetInput {
   className: string;
+  /** Iuran per periode (riwayat tarif); default `amount`. */
+  rate?: (period: string) => number;
   /** Penanda kelas pemilik sheet (lihat sheetMarker) — mencegah sheet kelas lain tertimpa. */
   marker: string;
   amount: number;
@@ -41,6 +43,7 @@ const ACTION_LABEL: Record<string, string> = {
   'kas.setujui': 'Setujui bukti',
   'kas.tolak': 'Tolak bukti',
   'kas.keluar': 'Catat pengeluaran',
+  'kas.tunai': 'Catat bayar tunai',
   'kas.masuk': 'Catat pemasukan',
   'kas.atur': 'Atur iuran',
   'kas.sheet': 'Sambungkan Sheet',
@@ -55,7 +58,8 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
   const current = periodKey(i.now, i.period);
   const periods = [current];
   while (periods.length < HISTORY_PERIODS) periods.unshift(previousPeriod(periods[0]!, i.period));
-  const statusNow = paidStatus(i.members, i.entries, i.amount, current);
+  const rate = i.rate ?? (() => i.amount);
+  const statusNow = paidStatus(i.members, i.entries, rate, current);
   const income = i.entries.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0);
   const spent = -i.entries.filter((e) => e.amount < 0 && e.kind === 'pengeluaran').reduce((s, e) => s + e.amount, 0);
 
@@ -93,11 +97,11 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
 
   const status: Cell[][] = [['Anggota', ...periods.map(periodLabel), `Status ${periodLabel(current)}`]];
   const perPeriod = periods.map((p) => {
-    const st = paidStatus(i.members, i.entries, i.amount, p);
+    const st = paidStatus(i.members, i.entries, rate, p);
     return new Map([...st.paid, ...st.unpaid].map((s) => [s.id, s.paidAmount]));
   });
   for (const m of [...i.members].sort((a, b) => a.name.localeCompare(b.name))) {
-    const now = statusNow.paid.find((s) => s.id === m.id) ? 'Lunas' : `Kurang ${rupiah(i.amount - (perPeriod.at(-1)!.get(m.id) ?? 0))}`;
+    const now = statusNow.paid.find((s) => s.id === m.id) ? 'Lunas' : `Kurang ${rupiah(rate(current) - (perPeriod.at(-1)!.get(m.id) ?? 0))}`;
     status.push([m.name, ...perPeriod.map((map) => map.get(m.id) || ''), now]);
   }
 

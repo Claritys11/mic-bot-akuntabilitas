@@ -89,12 +89,70 @@ export interface MemberStatus {
 }
 
 /** Siapa sudah/belum lunas iuran di sebuah periode (iuran + koreksinya). */
+export interface Rate {
+  amount: number;
+  period: KasPeriod;
+  /** Kunci periode mulai berlaku ('0000' = sejak awal). */
+  from: string;
+}
+
+/** Iuran yang berlaku di sebuah periode: tarif terakhir yang sudah berlaku (jenis periode sama), atau tarif sekarang. */
+export function rateFor(rates: readonly Rate[] | null | undefined, current: { amount: number; period: KasPeriod }, period: string): number {
+  const weekly = /-W\d{2}$/.test(period);
+  const match = (rates ?? []).filter((r) => (r.period === 'mingguan') === weekly && (r.from === '0000' || r.from <= period));
+  return match.length ? match[match.length - 1]!.amount : current.amount;
+}
+
+/** Hitung periode berikutnya. */
+export function nextPeriod(key: string, period: KasPeriod): string {
+  return periodKey(periodRange(key).end, period);
+}
+
+/**
+ * Alokasi pembayaran ke periode tertua yang belum lunas dulu (FIFO): rapel, bayar sebagian, dan bayar di muka.
+ * Maks 12 periode setelah periode sekarang; sisanya ditumpuk di periode terakhir supaya uang tidak hilang.
+ */
+export function allocatePayment(i: {
+  nominal: number;
+  memberId: string;
+  entries: LedgerEntry[];
+  kasPeriod: KasPeriod;
+  rate: (period: string) => number;
+  /** Periode pertama yang ditagih (mis. saat kas diatur). */
+  start: string;
+  current: string;
+  maxAhead?: number;
+}): { period: string; amount: number }[] {
+  const paid = new Map<string, number>();
+  for (const e of i.entries) {
+    if (e.memberId !== i.memberId || (e.kind !== 'iuran' && e.kind !== 'koreksi')) continue;
+    paid.set(e.period, (paid.get(e.period) ?? 0) + e.amount);
+  }
+  let last = i.current;
+  for (let n = 0; n < (i.maxAhead ?? 12); n++) last = nextPeriod(last, i.kasPeriod);
+  const out: { period: string; amount: number }[] = [];
+  let remaining = i.nominal;
+  let p = i.start <= i.current ? i.start : i.current;
+  for (let guard = 0; remaining > 0 && guard < 200; guard++) {
+    const due = Math.max(0, i.rate(p) - (paid.get(p) ?? 0));
+    const take = p === last ? remaining : Math.min(remaining, due);
+    if (take > 0) {
+      out.push({ period: p, amount: take });
+      remaining -= take;
+    }
+    if (p === last) break;
+    p = nextPeriod(p, i.kasPeriod);
+  }
+  return out;
+}
+
 export function paidStatus(
   members: { id: string; name: string }[],
   entries: LedgerEntry[],
-  amount: number,
+  amount: number | ((period: string) => number),
   period: string,
 ): { paid: MemberStatus[]; unpaid: MemberStatus[] } {
+  const due = typeof amount === 'function' ? amount(period) : amount;
   const totals = new Map<string, number>();
   for (const e of entries) {
     if (!e.memberId || e.period !== period) continue;
@@ -105,7 +163,7 @@ export function paidStatus(
   const unpaid: MemberStatus[] = [];
   for (const m of members) {
     const s = { id: m.id, name: m.name, paidAmount: totals.get(m.id) ?? 0 };
-    (s.paidAmount >= amount ? paid : unpaid).push(s);
+    (s.paidAmount >= due ? paid : unpaid).push(s);
   }
   return { paid, unpaid };
 }
