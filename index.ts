@@ -13,6 +13,8 @@ import { OpenRouterProvider } from './src/llm/openrouter.ts';
 import { startFeedJob } from './src/jobs/feeds.ts';
 import { startKasSheetJob } from './src/jobs/kasSheets.ts';
 import { loadServiceAccount, SheetsClient } from './src/integrations/google/sheets.ts';
+import { GoogleDeviceLinker } from './src/integrations/google/oauth.ts';
+import { startSheetLinkJob } from './src/jobs/sheetLinks.ts';
 import { startScheduler } from './src/scheduler/index.ts';
 import { webReader } from './src/tools/reader.ts';
 
@@ -41,7 +43,9 @@ if (config.googleServiceAccountFile) {
     console.error('[sheets] akun layanan Google tidak bisa dibaca:', (err as Error).message);
   }
 }
-const core = createCore(llm, { reader: webReader, sheets, lombaFeeds: config.lombaFeeds });
+// Login Google pengurus (opsional): bot membuat sheet sendiri di Drive bendahara.
+const sheetLinker = config.googleOAuth ? new GoogleDeviceLinker(config.googleOAuth) : undefined;
+const core = createCore(llm, { reader: webReader, sheets, sheetLinker, lombaFeeds: config.lombaFeeds });
 const senders: Partial<Record<Platform, Sender>> = {};
 const stops: (() => Promise<void>)[] = [];
 
@@ -99,13 +103,18 @@ const down = await recordStartup();
 if (down) alertOperator(`⚠️ MIC-Bot sempat mati ±${down.minutes} menit (sejak ${down.from.toISOString()}). Kalau sedang pilot, catat ini — data di rentang itu tidak lengkap.`);
 const stopScheduler = startScheduler(core, router, undefined, alertOperator);
 const stopFeeds = startFeedJob(llm, webReader, config.lombaFeeds);
-const stopSheets = sheets ? startKasSheetJob(sheets) : () => undefined;
+const stopSheets =
+  sheets || sheetLinker
+    ? startKasSheetJob((g) => (g.kas?.sheetAuth ? (sheetLinker?.clientFor(g.kas.sheetAuth) ?? null) : (sheets ?? null)), [sheetLinker && 'login Google pengurus', sheets && `akun layanan ${sheets.serviceEmail}`].filter(Boolean).join(' + '))
+    : () => undefined;
+const stopSheetLinks = sheetLinker ? startSheetLinkJob(core, router) : () => undefined;
 
 const shutdown = async (signal: string) => {
   console.log(`[app] ${signal}, mematikan...`);
   stopScheduler();
   stopFeeds();
   stopSheets();
+  stopSheetLinks();
   for (const stop of stops) await stop().catch(() => undefined);
   await disconnectDb();
   process.exit(0);

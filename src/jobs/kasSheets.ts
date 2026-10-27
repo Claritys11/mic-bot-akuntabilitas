@@ -1,5 +1,6 @@
 import { listMembers } from '../core/groups.ts';
 import { buildKasSheet, sheetMarker } from '../core/kas/sheet.ts';
+import { ownerStillAllowed } from '../core/kas/sheetLink.ts';
 import { ledgerEntries, rateOf } from '../core/kas/service.ts';
 import { FLAG_TEXT, type ProofFlag } from '../core/kas/verify.ts';
 import { now } from '../core/time.ts';
@@ -10,6 +11,8 @@ import { PUBLIC_REASON, SheetsError, type SheetsClient } from '../integrations/g
 // Tulis ulang Google Sheet kas tiap kelas yang ditandai "dirty" (dicek tiap menit, aman restart).
 
 export async function syncKasSheet(client: SheetsClient, g: GroupDoc): Promise<void> {
+  // Data teman sekelas jangan terus mengalir ke Drive pribadi orang yang sudah bukan pengurus kas.
+  if (!ownerStillAllowed(g)) throw new Error('pemilik sheet sudah bukan bendahara / tim inti kas — buat sheet baru lewat /kas sheet');
   const [members, entries, proofs, audits] = await Promise.all([
     listMembers(g.platform as Platform, g.groupId),
     ledgerEntries(g.groupId),
@@ -37,7 +40,10 @@ export async function syncKasSheet(client: SheetsClient, g: GroupDoc): Promise<v
   await client.writeTabs(g.kas!.sheetId!, tabs);
 }
 
-export function startKasSheetJob(client: SheetsClient): () => void {
+/** Klien untuk satu kelas: login Google pengurus (sheet buatan bot) atau akun layanan (sheet manual). */
+export type SheetsResolver = (g: GroupDoc) => SheetsClient | null;
+
+export function startKasSheetJob(resolve: SheetsResolver, label: string): () => void {
   let running = false;
   const tick = async () => {
     if (running) return;
@@ -48,11 +54,16 @@ export function startKasSheetJob(client: SheetsClient): () => void {
         const k = g.kas!;
         if (k.sheetSyncedAt && k.sheetDirtyAt! <= k.sheetSyncedAt) continue;
         const startedAt = new Date();
+        const client = resolve(g);
+        if (!client) {
+          await GroupModel.updateOne({ _id: g._id }, { $set: { 'kas.sheetSyncedAt': startedAt, 'kas.sheetError': 'integrasi Google untuk sheet ini belum aktif di bot' } });
+          continue;
+        }
         try {
           await syncKasSheet(client, g);
           await GroupModel.updateOne({ _id: g._id }, { $set: { 'kas.sheetSyncedAt': startedAt, 'kas.sheetError': null } });
         } catch (err) {
-          const msg = err instanceof SheetsError && err.status === 403 ? `akses ditolak — bagikan lagi ke ${client.serviceEmail} sebagai Editor` : (err as Error).message.slice(0, 200);
+          const msg = err instanceof SheetsError && err.status === 403 ? client.deniedHint : (err as Error).message.slice(0, 200);
           console.error(`[sheets] ${g.className}: ${msg}`);
           // Tandai sudah dicoba supaya tidak mengulang tiap menit; perubahan berikutnya mencoba lagi.
           await GroupModel.updateOne({ _id: g._id }, { $set: { 'kas.sheetSyncedAt': startedAt, 'kas.sheetError': msg } });
@@ -66,6 +77,6 @@ export function startKasSheetJob(client: SheetsClient): () => void {
   };
   const timer = setInterval(tick, 60_000);
   setTimeout(tick, 10_000);
-  console.log(`[sheets] laporan kas Google Sheets aktif (akun layanan ${client.serviceEmail})`);
+  console.log(`[sheets] laporan kas Google Sheets aktif (${label})`);
   return () => clearInterval(timer);
 }

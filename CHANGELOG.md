@@ -5,6 +5,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Bot yang memulai laporan kas Google Sheets: tawaran sekali ke tim inti/bendahara → tombol → login Google lewat kode (`google.com/device`) → sheet dibuat di Drive bendahara (scope `drive.file`), link via DM. Token tersegel AES-256-GCM, dicabut saat `/kas sheet link:putus`; berhenti menulis kalau pemilik bukan pengurus kas lagi.
 - Laporan kas otomatis di Google Sheets (`/kas sheet`), pencatatan pengeluaran & pemasukan lain (`/kas keluar`, `/kas masuk`).
 - Bendahara bisa orang (DM) atau channel `#tim-inti` (dicari, dibuatkan privat kalau belum ada); tim inti eksplisit (`tambah_tim`/`hapus_tim`).
 - Bot menindaklanjuti: pengingat pribadi/kelas (`@MIC ingetin …`, `/ingetin`), tanya ulang janji yang belum dijawab, tanya kabar sehari setelah lewat deadline, rangkuman Senin pagi.

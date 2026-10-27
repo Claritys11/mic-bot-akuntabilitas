@@ -37,6 +37,11 @@ const EnvSchema = z.object({
 
   // Google Sheets laporan kas: path file JSON kunci akun layanan (rahasia — taruh di data/, sudah di .gitignore).
   GOOGLE_SERVICE_ACCOUNT_FILE: optionalString,
+  // Login Google pengurus (OAuth client tipe "TVs and Limited Input devices") → bot membuat sheet sendiri.
+  GOOGLE_OAUTH_CLIENT_ID: optionalString,
+  GOOGLE_OAUTH_CLIENT_SECRET: optionalString,
+  // Kunci penyegel token Google di database (acak, ≥ 32 karakter; mis. `openssl rand -base64 48`).
+  SECRET_KEY: z.preprocess(emptyToUndefined, z.string().min(32, 'minimal 32 karakter acak').optional()),
   // Feed RSS/Atom info lomba & beasiswa (dipisah koma, https). "off" = tidak mengambil otomatis.
   LOMBA_FEEDS: z.preprocess(emptyToUndefined, z.string().default('https://www.lombasma.com/feed,https://www.indbeasiswa.com/feed')),
   TZ: z.preprocess(emptyToUndefined, z.string().default('Asia/Jakarta')),
@@ -65,6 +70,15 @@ export interface Config {
   demoTimeScale: number;
   lombaFeeds: string[];
   googleServiceAccountFile?: string;
+  googleOAuth?: { clientId: string; clientSecret: string; secretKey: string };
+}
+
+function googleOAuthOf(e: z.infer<typeof EnvSchema>): Config['googleOAuth'] {
+  if (!e.GOOGLE_OAUTH_CLIENT_ID && !e.GOOGLE_OAUTH_CLIENT_SECRET) return undefined;
+  if (!e.GOOGLE_OAUTH_CLIENT_ID || !e.GOOGLE_OAUTH_CLIENT_SECRET) throw new Error('Konfigurasi env tidak valid:\n  - GOOGLE_OAUTH_CLIENT_ID dan GOOGLE_OAUTH_CLIENT_SECRET harus diisi berdua');
+  // Tanpa kunci penyegel, token Google tidak boleh disimpan → fitur dimatikan dengan jelas.
+  if (!e.SECRET_KEY) throw new Error('Konfigurasi env tidak valid:\n  - SECRET_KEY wajib diisi (≥ 32 karakter acak) untuk menyimpan login Google dengan aman');
+  return { clientId: e.GOOGLE_OAUTH_CLIENT_ID, clientSecret: e.GOOGLE_OAUTH_CLIENT_SECRET, secretKey: e.SECRET_KEY };
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -97,6 +111,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     },
     demoTimeScale: e.DEMO_TIME_SCALE,
     googleServiceAccountFile: e.GOOGLE_SERVICE_ACCOUNT_FILE,
+    googleOAuth: googleOAuthOf(e),
     lombaFeeds: e.LOMBA_FEEDS === 'off' ? [] : e.LOMBA_FEEDS.split(',').map((u) => u.trim()).filter((u) => /^https:\/\//.test(u)),
   };
 }

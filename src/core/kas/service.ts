@@ -28,6 +28,7 @@ import { audit, memberName } from '../team/audit.ts';
 import { can, rolesOf } from '../team/roles.ts';
 import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
 import { sheetMarker, spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
+import { sheetUrl, startButton, type SheetLinker } from './sheetLink.ts';
 import { allocatePayment, nextPeriod, paidStatus, previousPeriod, rateFor, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry, type Rate } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
@@ -557,32 +558,48 @@ export async function markKasDirty(groupId: string): Promise<void> {
 }
 
 const SHEET_HELP = (email: string) =>
-  `Cara menyambungkan laporan kas ke Google Sheets:\n` +
+  `Cara manual (sheet buatan sendiri):\n` +
   `1. Buat Google Sheet kosong (sheets.new).\n` +
   `2. Klik **Share/Bagikan** → tambahkan \`${email}\` sebagai **Editor**.\n` +
   `3. Tempel linknya: \`/kas sheet link:https://docs.google.com/spreadsheets/d/...\`\n` +
-  `Aku isi tab Ringkasan, Buku Kas, Status Iuran, dan Bukti Transfer, lalu memperbaruinya otomatis tiap ada perubahan.\n` +
   `⚠️ Sheet berisi nama & status bayar anggota — bagikan hanya ke pengurus.`;
 
-/** /kas sheet [link] — sambungkan / lihat status Google Sheet laporan kas. */
-export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway): Promise<Reply> {
+/** /kas sheet [link] — status, buat otomatis (login Google), sambungkan manual, atau putus. */
+export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway, linker?: SheetLinker): Promise<Reply> {
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   if (!isTreasurer(group, cmd)) return { reply: { text: 'Laporan kas di Google Sheets hanya bisa diatur bendahara / pengurus.', private: true } };
-  if (!sheets) return { reply: { text: 'Integrasi Google Sheets belum diaktifkan di bot ini (operator bot perlu mengisi GOOGLE_SERVICE_ACCOUNT_FILE). Sementara pakai `/kas ekspor` (CSV).', private: true } };
+  if (!sheets && !linker) return { reply: { text: 'Integrasi Google Sheets belum diaktifkan di bot ini (operator bot perlu mengisi GOOGLE_OAUTH_CLIENT_ID atau GOOGLE_SERVICE_ACCOUNT_FILE). Sementara pakai `/kas ekspor` (CSV).', private: true } };
   const link = typeof cmd.options.link === 'string' ? cmd.options.link.trim() : '';
+  const k = group.kas;
   if (!link) {
-    const k = group.kas;
-    const status = k?.sheetId
-      ? `📊 Tersambung ke **${k.sheetTitle ?? 'Google Sheet'}**: https://docs.google.com/spreadsheets/d/${k.sheetId}\n` +
-        (k.sheetError ? `⚠️ Sinkron terakhir gagal: ${k.sheetError}` : k.sheetSyncedAt ? `Terakhir diperbarui ${formatWIB(k.sheetSyncedAt)}.` : 'Sedang disiapkan…')
-      : 'Belum ada Google Sheet yang tersambung.';
-    return { reply: { text: `${status}\n\n${SHEET_HELP(sheets.serviceEmail)}`, private: true } };
+    if (k?.sheetId) {
+      const status =
+        `📊 Laporan kas: **${k.sheetTitle ?? 'Google Sheet'}**\n${sheetUrl(k.sheetId)}\n` +
+        (k.sheetError ? `⚠️ Sinkron terakhir gagal: ${k.sheetError}` : k.sheetSyncedAt ? `Terakhir diperbarui ${formatWIB(k.sheetSyncedAt)}.` : 'Sedang disiapkan…') +
+        `\n\nBerhenti memperbarui: \`/kas sheet link:putus\``;
+      return { reply: { text: status, private: true } };
+    }
+    if (linker) {
+      return {
+        reply: {
+          text:
+            'Belum ada laporan kas di Google Sheets. Klik tombol di bawah — kamu cukup login Google, sisanya aku yang bikin & isi otomatis 📊' +
+            (sheets ? `\n\n${SHEET_HELP(sheets.serviceEmail)}` : ''),
+          actions: [startButton(group.groupId)],
+          private: true,
+        },
+      };
+    }
+    return { reply: { text: `Belum ada Google Sheet yang tersambung.\n\n${SHEET_HELP(sheets!.serviceEmail)}`, private: true } };
   }
   if (link === 'putus' || link === 'hapus') {
-    await GroupModel.updateOne({ _id: group._id }, { $set: { 'kas.sheetId': null, 'kas.sheetTitle': null, 'kas.sheetError': null } });
-    return { reply: { text: 'Google Sheet diputus — aku berhenti memperbaruinya (isinya tidak dihapus).', private: true } };
+    if (k?.sheetAuth && linker) await linker.revoke(k.sheetAuth);
+    await GroupModel.updateOne({ _id: group._id }, { $set: { 'kas.sheetId': null, 'kas.sheetTitle': null, 'kas.sheetError': null, 'kas.sheetAuth': null } });
+    await audit(cmd.groupId, cmd.actor, 'kas.sheet', 'diputus');
+    return { reply: { text: 'Google Sheet diputus — aku berhenti memperbaruinya dan izin Google-nya kucabut (isi sheet tidak dihapus, tetap milik pemiliknya).', private: true } };
   }
+  if (!sheets) return { reply: { text: 'Di bot ini sheet dibuat otomatis: ketik `/kas sheet` tanpa link lalu klik tombolnya.', private: true } };
   const id = spreadsheetIdOf(link);
   if (!id) return { reply: { text: 'Itu bukan link Google Sheets. Contoh: https://docs.google.com/spreadsheets/d/…/edit', private: true } };
   const check = await sheets.check(id);
@@ -595,8 +612,10 @@ export async function kasSheet(cmd: CommandInvocation, sheets?: KasSheetGateway)
   }
   await GroupModel.updateOne(
     { _id: group._id },
-    { $set: { 'kas.sheetId': id, 'kas.sheetTitle': check.title.slice(0, 100), 'kas.sheetDirtyAt': new Date(), 'kas.sheetSyncedAt': null, 'kas.sheetError': null } },
+    // Sheet manual ditulis lewat akun layanan → lepas login Google lama (kalau ada).
+    { $set: { 'kas.sheetId': id, 'kas.sheetTitle': check.title.slice(0, 100), 'kas.sheetDirtyAt': new Date(), 'kas.sheetSyncedAt': null, 'kas.sheetError': null, 'kas.sheetAuth': null } },
   );
+  if (k?.sheetAuth && linker) await linker.revoke(k.sheetAuth);
   await audit(cmd.groupId, cmd.actor, 'kas.sheet', check.title.slice(0, 100));
   return {
     reply: {

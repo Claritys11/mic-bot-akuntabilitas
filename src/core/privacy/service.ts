@@ -1,4 +1,4 @@
-import { AuditModel, ReminderModel, GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
+import { AuditModel, ReminderModel, GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, SheetLinkModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { can, rolesOf } from '../team/roles.ts';
 import { mention, type ActionEvent, type CommandInvocation, type Reply } from '../types.ts';
@@ -73,6 +73,12 @@ export async function deleteMemberData(platform: string, groupId: string, userId
     AuditModel.updateMany({ groupId, subjectId: userId }, { $set: { detail: DELETED, subjectId: 'deleted' } }),
     // Transaksi yang dia catat sebagai bendahara: pencatat dianonimkan (jumlah tetap).
     TransactionModel.collection.updateMany({ groupId, createdBy: userId }, { $set: { createdBy: 'deleted' } }),
+    // Login Google yang belum selesai, dan sheet di Drive-nya: berhenti dipakai (isi sheet tetap miliknya).
+    SheetLinkModel.deleteMany({ groupId, 'actor.platformUserId': userId }),
+    GroupModel.updateOne(
+      { platform, groupId, 'kas.sheetOwnerId': userId },
+      { $set: { 'kas.sheetId': null, 'kas.sheetTitle': null, 'kas.sheetAuth': null, 'kas.sheetOwnerId': null, 'kas.sheetError': null } },
+    ),
   ]);
   // Nama yang dihapus juga harus hilang dari Google Sheet laporan kas.
   await GroupModel.updateOne({ groupId, 'kas.sheetId': { $ne: null } }, { $set: { 'kas.sheetDirtyAt': new Date() } });
@@ -94,6 +100,7 @@ export async function deleteGroupData(platform: string, groupId: string): Promis
     WaPromptModel.deleteMany({ groupId }),
     AuditModel.deleteMany({ groupId }),
     ReminderModel.deleteMany({ groupId }),
+    SheetLinkModel.deleteMany({ platform, groupId }),
     GroupModel.deleteMany({ platform, groupId }),
   ]);
   return results.reduce((n, r) => n + r.deletedCount, 0);

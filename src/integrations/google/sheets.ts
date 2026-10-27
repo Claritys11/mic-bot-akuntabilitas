@@ -2,10 +2,10 @@ import { createSign } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { MARKER_LABEL, type SheetTab } from '../../core/kas/sheet.ts';
 
-// Google Sheets lewat akun layanan (service account) — tanpa library googleapis yang besar.
-// Alur: JWT ditandatangani kunci privat akun layanan → token akses (1 jam) → REST API Sheets v4.
-// Akun layanan tidak punya kuota Drive sendiri, jadi spreadsheet DIBUAT pengurus lalu dibagikan
-// (Editor) ke email akun layanan; bot yang mengisi dan memperbaruinya.
+// Google Sheets REST v4 tanpa library googleapis yang besar. Token akses dari TokenSource:
+//   • login Google pengurus (oauth.ts) — sheet dibuat bot di Drive pengurus (cara utama), atau
+//   • akun layanan — JWT bertanda tangan; sheet dibuat pengurus lalu dibagikan (Editor) ke email akun layanan,
+//     karena akun layanan tidak punya kuota Drive sendiri.
 
 // spreadsheets: isi sheet. drive.metadata.readonly: hanya membaca izin berbagi (tolak sheet yang publik).
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly';
@@ -45,23 +45,33 @@ export function signedAssertion(sa: ServiceAccount, nowSec = Math.floor(Date.now
   return `${header}.${claims}.${signature}`;
 }
 
-type Fetch = typeof fetch;
+export type Fetch = typeof fetch;
 
-export class SheetsClient {
+/** Sumber token akses: akun layanan (cara lama) atau login Google pengurus (lihat oauth.ts). */
+export interface TokenSource {
+  accessToken(http: Fetch): Promise<string>;
+  /** Kalimat untuk error 403, mis. "bagikan ke x@… sebagai Editor". */
+  readonly deniedHint: string;
+  /** Email akun layanan (hanya cara lama). */
+  readonly serviceEmail?: string;
+}
+
+/** Token dari akun layanan: JWT bertanda tangan → token akses 1 jam (di-cache). */
+export class ServiceAccountTokens implements TokenSource {
   private token: { value: string; until: number } | null = null;
-
-  constructor(
-    private readonly sa: ServiceAccount,
-    private readonly http: Fetch = fetch,
-  ) {}
+  constructor(private readonly sa: ServiceAccount) {}
 
   get serviceEmail(): string {
     return this.sa.client_email;
   }
 
-  private async accessToken(): Promise<string> {
+  get deniedHint(): string {
+    return `belum dibagikan ke ${this.sa.client_email} sebagai Editor`;
+  }
+
+  async accessToken(http: Fetch): Promise<string> {
     if (this.token && Date.now() < this.token.until) return this.token.value;
-    const res = await this.http(this.sa.token_uri ?? 'https://oauth2.googleapis.com/token', {
+    const res = await http(this.sa.token_uri ?? 'https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signedAssertion(this.sa) }),
@@ -71,6 +81,30 @@ export class SheetsClient {
     if (!res.ok || !data.access_token) throw new SheetsError(res.status, `Login Google gagal: ${data.error_description ?? res.status}`);
     this.token = { value: data.access_token, until: Date.now() + ((data.expires_in ?? 3600) - 120) * 1000 };
     return this.token.value;
+  }
+}
+
+export class SheetsClient {
+  private readonly auth: TokenSource;
+
+  constructor(
+    auth: ServiceAccount | TokenSource,
+    private readonly http: Fetch = fetch,
+  ) {
+    this.auth = 'private_key' in auth ? new ServiceAccountTokens(auth) : auth;
+  }
+
+  /** Email akun layanan (kosong kalau sheet milik login Google pengurus). */
+  get serviceEmail(): string {
+    return this.auth.serviceEmail ?? '';
+  }
+
+  get deniedHint(): string {
+    return this.auth.deniedHint;
+  }
+
+  private accessToken(): Promise<string> {
+    return this.auth.accessToken(this.http);
   }
 
   private async call<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
@@ -111,7 +145,7 @@ export class SheetsClient {
       return { ok: true, title: r.properties.title, marker: await this.readMarker(spreadsheetId) };
     } catch (err) {
       const status = err instanceof SheetsError ? err.status : 0;
-      if (status === 403) return { ok: false, reason: `belum dibagikan ke ${this.serviceEmail} sebagai Editor` };
+      if (status === 403) return { ok: false, reason: this.deniedHint };
       if (status === 404) return { ok: false, reason: 'spreadsheet tidak ditemukan — cek lagi linknya' };
       return { ok: false, reason: (err as Error).message };
     }

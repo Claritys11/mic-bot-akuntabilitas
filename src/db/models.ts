@@ -59,6 +59,14 @@ const GroupSchema = new Schema(
       sheetDirtyAt: { type: Date, default: null },
       sheetSyncedAt: { type: Date, default: null },
       sheetError: { type: String, default: null },
+      // Login Google pengurus (refresh token TERSEGEL AES-GCM) — sheet dibuat bot di Drive pengurus.
+      // null = sheet lama yang dibagikan ke akun layanan.
+      sheetAuth: { type: String, default: null },
+      // Pemilik sheet (yang login). Bukan pengurus kas lagi → bot berhenti menulis data kelas ke Drive-nya.
+      sheetOwnerId: { type: String, default: null },
+      sheetOwnerAdmin: { type: Boolean, default: false },
+      // Bot sudah menawarkan "buatkan laporan Google Sheets" (sekali saja).
+      sheetOfferedAt: { type: Date, default: null },
     },
   },
   { timestamps: true },
@@ -259,6 +267,24 @@ OppPostSchema.index({ groupId: 1, opportunityId: 1 }, { unique: true });
 export const OppPostModel = mongoose.model('OppPost', OppPostSchema);
 
 // ---------- Wawancara setup (sementara; hilang sendiri setelah 3 hari) ----------
+// Login Google yang sedang menunggu pengurus memasukkan kode (umur pendek, terhapus otomatis).
+const SheetLinkSchema = new Schema({
+  platform: { type: String, required: true },
+  groupId: { type: String, required: true },
+  actor: { platformUserId: { type: String, required: true }, displayName: { type: String, required: true } },
+  actorIsAdmin: { type: Boolean, default: false },
+  channelId: { type: String, required: true },
+  // Rahasia sementara (≤ 30 menit) — tidak pernah ditampilkan.
+  deviceCode: { type: String, required: true },
+  interval: { type: Number, default: 5 },
+  nextPollAt: { type: Date, required: true },
+  expiresAt: { type: Date, required: true },
+});
+SheetLinkSchema.index({ platform: 1, groupId: 1 }, { unique: true });
+SheetLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 600 });
+export const SheetLinkModel = mongoose.model('SheetLink', SheetLinkSchema);
+export type SheetLinkDoc = InferSchemaType<typeof SheetLinkSchema> & { _id: mongoose.Types.ObjectId };
+
 const OnboardingSchema = new Schema(
   {
     platform: { type: String, required: true },

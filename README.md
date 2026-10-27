@@ -66,7 +66,7 @@ dan mengambil info lomba/beasiswa baru dari internet setiap hari.
 | Tagihan bertahap | H-2 / H-1 / H-0 lewat DM (cadangan: channel), lewat deadline → diumumkan ke grup |
 | Tingkat tutur | `santai`, `sopan`, `krama` (Jawa), dipilih saat wawancara setup |
 | Janji & rapor | `/janji list`, `/janji selesai`, `/rapor-kelas` (skor di level kelas saja) |
-| Laporan kas Google Sheets | `/kas sheet link:…` — Ringkasan, Buku Kas, Status Iuran, Bukti Transfer diperbarui otomatis; `/kas keluar`, `/kas masuk` untuk arus kas lain |
+| Laporan kas Google Sheets | Bot menawarkan & membuatkan sheet di Drive bendahara (login Google lewat kode); `/kas sheet` — Ringkasan, Buku Kas, Status Iuran, Bukti Transfer diperbarui otomatis; `/kas keluar`, `/kas masuk` untuk arus kas lain |
 | Kas kelas | `/kas atur`, kirim foto bukti di channel kas → cek duplikat/nominal/tanggal → bendahara ✅/❌, `/kas rekap`, `/kas ekspor` (CSV) |
 | Rangkuman | `/rangkum jam:3` (pesan mentah disimpan maks. 48 jam, TTL index) |
 | Info lomba | maks. 2 posting/minggu sesuai jurusan, tombol 👥 *Bentuk tim* → thread + janji awal, `/lomba list`, `/lomba tambah link:…` (dibaca otomatis) |
@@ -128,22 +128,42 @@ untuk bendahara/LPJ: tab *Ringkasan*, *Buku Kas* (saldo berjalan), *Status Iuran
 *Bukti Transfer* diperbarui ±1 menit setelah ada iuran disetujui, bukti masuk/ditolak, `/kas keluar`,
 `/kas masuk`, atau perubahan iuran.
 
+### Cara utama: bot yang membuatkan (disarankan)
+
+Bendahara tidak perlu membuat atau membagikan apa pun. Setelah iuran kas diatur, bot menawarkan sekali
+(di channel tim inti, atau DM bendahara) tombol **📊 Buatkan laporan Google Sheets** — juga ada di `/kas sheet`.
+Yang menekan mendapat 3 langkah (hanya terlihat olehnya): buka `google.com/device` → masukkan kode → pilih akun
+Google → **Izinkan**. Bot lalu membuat spreadsheet **di Google Drive bendahara sendiri**, mengisinya, dan
+mengirim linknya lewat DM. Izin yang diminta hanya `drive.file`: bot cuma bisa menyentuh file yang ia buat,
+bukan isi Drive lainnya.
+
+- Login Google disimpan sebagai refresh token **terenkripsi** (AES-256-GCM, kunci `SECRET_KEY`).
+- `/kas sheet link:putus` → berhenti memperbarui dan izin Google dicabut (isi sheet tetap milik pemiliknya).
+- Pemilik sheet dicopot dari bendahara/tim inti kas, atau datanya dihapus → bot berhenti menulis ke Drive-nya.
+- Sheet dibuat publik ("siapa saja yang punya link") → bot berhenti mengisi sampai aksesnya dibatasi lagi.
+
 **Sekali saja (operator bot):**
-1. [console.cloud.google.com](https://console.cloud.google.com) → buat project → *APIs & Services* → aktifkan **Google Sheets API**
-   dan **Google Drive API** (dipakai hanya untuk memeriksa sheet tidak dibagikan publik).
-2. *IAM & Admin → Service Accounts* → buat akun layanan → *Keys* → *Add key* → **JSON** → simpan sebagai
-   `data/google-service-account.json` (folder `data/` tidak ikut git — kunci ini rahasia).
-3. `.env`: `GOOGLE_SERVICE_ACCOUNT_FILE=./data/google-service-account.json`, lalu restart bot.
+1. [console.cloud.google.com](https://console.cloud.google.com) → buat project → *APIs & Services* → aktifkan
+   **Google Sheets API** dan **Google Drive API**.
+2. *OAuth consent screen* (Google Auth Platform): tipe **External**, isi nama aplikasi & email, scope cukup
+   `…/auth/drive.file`, lalu **Publish app** (status *In production*). Jangan biarkan di *Testing*: di mode itu
+   hanya akun yang didaftarkan yang bisa login dan izinnya kedaluwarsa tiap 7 hari. `drive.file` termasuk scope
+   non-sensitif, jadi tidak perlu verifikasi Google.
+3. *Credentials → Create credentials → OAuth client ID* → tipe **TVs and Limited Input devices**.
+4. `.env`: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, dan `SECRET_KEY` (acak ≥ 32 karakter,
+   mis. `openssl rand -base64 48`). Simpan `SECRET_KEY` baik-baik — kalau hilang/berganti, semua kelas perlu
+   login Google ulang. Restart bot.
 
-**Per kelas (bendahara/pengurus, di Discord):**
-1. Buat Google Sheet kosong ([sheets.new](https://sheets.new)) → **Bagikan** ke email akun layanan sebagai **Editor**,
-   biarkan *Akses umum* = **Dibatasi** (bot menolak sheet yang bisa dibuka siapa saja yang punya link)
-   (`/kas sheet` menampilkan emailnya).
-2. `/kas sheet link:https://docs.google.com/spreadsheets/d/…` → selesai. `/kas sheet link:putus` untuk berhenti.
+### Cara manual (akun layanan, opsional)
 
-Akun layanan Google tidak punya kuota penyimpanan sendiri, jadi spreadsheet dibuat oleh pengurus lalu
-dibagikan ke bot. Nilai ditulis apa adanya (tanpa formula). Sheet berisi nama & status bayar anggota —
-bagikan hanya ke pengurus.
+Untuk sekolah yang ingin sheet dibuat sendiri lalu dibagikan ke bot:
+1. Di project yang sama: *IAM & Admin → Service Accounts* → buat akun layanan → *Keys* → *Add key* → **JSON**
+   → simpan sebagai `data/google-service-account.json` (folder `data/` tidak ikut git — kunci ini rahasia).
+2. `.env`: `GOOGLE_SERVICE_ACCOUNT_FILE=./data/google-service-account.json`, lalu restart bot.
+3. Per kelas: buat Google Sheet ([sheets.new](https://sheets.new)) → **Bagikan** ke email akun layanan sebagai
+   **Editor**, *Akses umum* = **Dibatasi** → `/kas sheet link:https://docs.google.com/spreadsheets/d/…`.
+
+Nilai ditulis apa adanya (tanpa formula). Sheet berisi nama & status bayar anggota — bagikan hanya ke pengurus.
 
 ## WhatsApp (eksperimental)
 

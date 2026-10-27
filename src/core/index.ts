@@ -3,6 +3,7 @@ import { collectPromiseReminders } from './billing/service.ts';
 import { answerQuestion } from './chat/ask.ts';
 import { getGroup, setupGroup, upsertMember } from './groups.ts';
 import { collectUndeliveredProofs, kasArus, kasSheet, kasTunai } from './kas/service.ts';
+import { collectSheetOffers, handleSheetLinkAction, pollSheetLinks, type SheetLinker } from './kas/sheetLink.ts';
 import type { KasSheetGateway } from './kas/sheet.ts';
 import { collectKasReminders, handleKasAction, handleKasForm, handleKasProof, kasAtur, kasEkspor, kasRekap } from './kas/service.ts';
 import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboarding } from './onboarding/service.ts';
@@ -34,6 +35,8 @@ export interface Core {
   registerPlatform(platform: Platform, ops: PlatformOps): void;
   /** Dipanggil scheduler: kumpulkan semua pesan terjadwal yang jatuh tempo. */
   tick(at?: Date): Promise<OutgoingMessage[]>;
+  /** Dipanggil job tiap beberapa detik: login Google laporan kas yang menunggu kode dimasukkan. */
+  pollSheetLinks(at?: Date): Promise<OutgoingMessage[]>;
 }
 
 const cleanMember = <T extends Member>(m: T): T => ({ ...m, displayName: sanitize(m.displayName) });
@@ -47,6 +50,8 @@ export interface CoreDeps {
   reader?: PageReader;
   /** Google Sheets untuk laporan kas. Tanpa ini, /kas sheet menjelaskan cara mengaktifkannya. */
   sheets?: KasSheetGateway;
+  /** Login Google pengurus → bot membuat sheet sendiri. Tanpa ini, hanya cara manual (akun layanan). */
+  sheetLinker?: SheetLinker;
   /** Feed tambahan operator (env LOMBA_FEEDS) — ikut katalog sumber lomba. */
   lombaFeeds?: string[];
 }
@@ -110,7 +115,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     'kas.atur': (cmd) => kasAtur(cmd, opsFor(cmd.platform)),
     'kas.rekap': kasRekap,
     'kas.ekspor': kasEkspor,
-    'kas.sheet': (cmd) => kasSheet(cmd, deps.sheets),
+    'kas.sheet': (cmd) => kasSheet(cmd, deps.sheets, deps.sheetLinker),
     'kas.keluar': (cmd) => kasArus(cmd, 'pengeluaran'),
     'kas.tunai': kasTunai,
     'kas.masuk': (cmd) => kasArus(cmd, 'pemasukan'),
@@ -184,6 +189,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
       const ev = { ...raw, actor: cleanMember(raw.actor) };
       const prefix = ev.actionId.split(':')[0];
       if (prefix === 'p') return handlePromiseAction(ev);
+      if (ev.actionId.startsWith('k:gs:')) return handleSheetLinkAction(ev, deps.sheetLinker);
       if (prefix === 'k') return handleKasAction(ev);
       if (prefix === 'o') return handleOppAction(ev, sources);
       if (prefix === 'ob') return handleOnboardingAction(ev, opsFor(ev.platform));
@@ -213,13 +219,17 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     },
 
     async tick(at = now()) {
-      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectUndeliveredProofs(at), collectNudges(at), collectFollowUps(at), collectWeeklyDigests(at)]);
+      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectUndeliveredProofs(at), collectNudges(at), collectFollowUps(at), collectWeeklyDigests(at), deps.sheetLinker ? collectSheetOffers(at) : Promise.resolve([])]);
       const out: OutgoingMessage[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') out.push(...r.value);
         else console.error('[scheduler] tugas gagal:', r.reason);
       }
       return out;
+    },
+
+    async pollSheetLinks(at = now()) {
+      return deps.sheetLinker ? pollSheetLinks(at, deps.sheetLinker) : [];
     },
   };
 }
