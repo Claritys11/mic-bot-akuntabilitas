@@ -16,6 +16,31 @@ Discord ──► adapters/discord ──IncomingMessage──► onMessage ─�
                                          db (MongoDB/Mongoose)      llm (OpenAI-compatible: OpenRouter / Hermes)
 ```
 
+```mermaid
+flowchart LR
+  subgraph Platform
+    D[Discord]
+    W[WhatsApp<br/>eksperimental]
+  end
+  D <--> AD[adapters/discord]
+  W <--> AW[adapters/whatsapp]
+  AD -- IncomingMessage / Action / Form / Command --> C
+  AW -- IncomingMessage / balas angka / perintah teks --> C
+  C -- OutgoingMessage / Reply --> AD
+  C -- OutgoingMessage / Reply --> AW
+  subgraph C[core — netral platform]
+    J[janji + tagihan]
+    K[kas + verifikasi]
+    T[tanya-jawab + suasana]
+    L[info lomba]
+    P[pilot + metrik]
+  end
+  S[scheduler<br/>poll 60 dtk] -- tick --> C
+  S -- kirim via router per platform --> AD & AW
+  C <--> DB[(MongoDB)]
+  C <--> LLM[OpenRouter LLM<br/>JSON + zod]
+```
+
 Core menerima tipe netral (`src/core/types.ts`) dan mengembalikan `OutgoingMessage[]` atau `Reply`.
 Adapter yang mengirim. ESLint menolak `import 'discord.js'` di `src/core`, sehingga adapter WhatsApp
 nanti cukup menerjemahkan tipe yang sama.

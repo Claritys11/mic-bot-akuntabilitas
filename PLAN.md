@@ -57,8 +57,9 @@ Versi demo: kurasi, bukan scraper.
 ## M5 — Siap demo (Hari 10–11)
 - [ ] Error handling & log; LLM gagal ≠ bot crash
 - [ ] Hitung biaya LLM per 100 pesan (angka untuk slide model bisnis)
-- [ ] Skrip demo + server Discord demo yang rapi
-- [ ] README + diagram arsitektur (core/adapter → janji WA tinggal ganti adapter)
+- [x] Skrip demo (`docs/DEMO.md`) + `bun run demo:check` (cek LLM, vision, Mongo, mode diam, DEMO_TIME_SCALE)
+- [ ] Server Discord demo yang rapi + rekam video cadangan
+- [x] Diagram arsitektur (Mermaid di `docs/ARCHITECTURE.md`)
 
 ## M6 — Pilot & validasi ★ sekarang prioritas (lihat docs/PILOT.md)
 - [x] Rencana pilot + kelas kontrol + metrik (`docs/PILOT.md`, `bun run pilot:metrics`)

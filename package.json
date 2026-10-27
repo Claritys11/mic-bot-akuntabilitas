@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "simulate": "bun scripts/simulate.ts",
     "eval:voice": "bun scripts/eval-voice.ts",
-    "pilot:metrics": "bun scripts/pilot-metrics.ts"
+    "pilot:metrics": "bun scripts/pilot-metrics.ts",
+    "demo:check": "bun scripts/demo-check.ts"
   },
   "engines": {
     "node": ">=18"

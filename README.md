@@ -27,6 +27,7 @@ Detail tiap milestone dan checklist-nya ada di [`PLAN.md`](PLAN.md) dan tab **Mi
 | [`PLAN.md`](PLAN.md) | Roadmap & milestone (sumber kebenaran apa yang sedang dikerjakan) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Alur pesan, folder, data, LLM, scheduler |
 | [`docs/PILOT.md`](docs/PILOT.md) | Rencana pilot, kelas kontrol, metrik, holdout deteksi janji |
+| [`docs/DEMO.md`](docs/DEMO.md) | Skrip demo 5 menit untuk juri + `bun run demo:check` |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Setup dev, alur branch/PR, gaya commit, aturan arsitektur |
 | [`SECURITY.md`](SECURITY.md) | Rahasia, privasi data, cara melapor celah |
 | [`CHANGELOG.md`](CHANGELOG.md) | Riwayat perubahan per versi |

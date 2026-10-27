@@ -15,7 +15,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { COMMANDS } from '../../core/commands.ts';
 import { addMissingMembers, groupsOfMember } from '../../core/groups.ts';
 import type { Core } from '../../core/index.ts';
-import type { Attachment, Context, IncomingMessage, Member, MessageBody, OutgoingMessage, Reply, Sender } from '../../core/types.ts';
+import { mention, type Attachment, type Context, type IncomingMessage, type Member, type MessageBody, type OutgoingMessage, type Reply, type Sender } from '../../core/types.ts';
 import { MemberModel, WaPromptModel, type WaPromptDoc } from '../../db/models.ts';
 import { helpText, jidUser, matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa } from './format.ts';
 
@@ -211,7 +211,11 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
     if (r.reply) {
       if (r.reply.private && isJidGroup(ctx.chatId)) {
         // Tidak ada pesan "hanya kamu yang lihat" di WhatsApp → kirim ke chat pribadi.
-        await sender.send({ ...r.reply, to: { kind: 'dm', member: ctx.actor, fallbackChannelId: ctx.chatId } });
+        // Kalau chat pribadi gagal, grup hanya diberi tahu — isi (mis. CSV ekspor) tidak pernah ditampilkan di grup.
+        await sender.send({
+          ...r.reply,
+          to: { kind: 'dm', member: ctx.actor, fallbackChannelId: ctx.chatId, fallbackText: `${mention(ctx.actor)}, balasannya pribadi tapi gagal ku kirim ke chat pribadimu 🙏 Chat aku dulu, lalu ulangi perintahnya.` },
+        });
       } else {
         await sendBody(ctx.chatId, r.reply, { groupId, quoteId: ctx.replyTo });
       }
