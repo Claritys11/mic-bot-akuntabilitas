@@ -35,6 +35,7 @@ const G = 'guild-1';
 const CH = 'ch-umum';
 const KAS = 'ch-kas';
 const LOMBA = 'ch-lomba';
+const TIM = 'ch-tim-inti';
 const member = (id: string, name: string): Member => ({ platform: 'discord', platformUserId: id, groupId: G, displayName: name });
 const ani = member('u-ani', 'Ani');
 const budi = member('u-budi', 'Budi');
@@ -100,6 +101,9 @@ const actionOf = (out: OutgoingMessage[] | MessageBody | undefined, label: strin
 // ---- M0: setup lewat wawancara ----
 core.registerPlatform('discord', {
   createChannel: async (_g, name) => (name === 'kas-kelas' ? KAS : LOMBA),
+  findChannel: async () => null,
+  createPrivateChannel: async () => TIM,
+  isPrivateChannel: async () => true,
   listMembers: async () => [ani, budi, ketua],
 });
 const click = async (actor: Member, actionId: string, isAdmin = false) =>
@@ -126,6 +130,8 @@ step('Ketua: kas');
 await answer(ketua, '10rb per bulan');
 step('Ketua tag bendahara');
 await answer(ketua, '@Ketua aja', { mentions: [ketua] });
+step('Ketua pilih: bukti kas dicek di 🔒 channel tim inti (dibuatkan)');
+await click(ketua, 'ob:rev:channel', true);
 
 // ---- M1: janji ----
 step('Obrolan biasa (tidak lolos prefilter)');
@@ -189,10 +195,10 @@ const fakeImage = (seed: string) => [{ name: 'bukti.png', contentType: 'image/pn
 step('Ani kirim foto bukti transfer di #kas');
 const proof = await core.onMessage(say(ani, '', KAS, fakeImage('ani')));
 printOut(proof);
-step('Ketua klik ✅ Setujui (nominal tak terbaca → form)');
-const appr = await core.onAction({ ...ctx(ketua, KAS), actionId: actionOf(proof, 'Setujui'), messageId: 'bot4' });
+step('Ketua (di #tim-inti) klik ✅ Setujui (nominal tak terbaca → form)');
+const appr = await core.onAction({ ...ctx(ketua, TIM), actionId: actionOf(proof, 'Setujui'), messageId: 'bot4' });
 printReply(appr);
-printReply(await core.onForm({ ...ctx(ketua, KAS), formId: appr.form!.id, values: { nominal: '10.000' } }));
+printReply(await core.onForm({ ...ctx(ketua, TIM), formId: appr.form!.id, values: { nominal: '10.000' } }));
 step('Budi kirim gambar yang SAMA (duplikat)');
 printOut(await core.onMessage(say(budi, '', KAS, fakeImage('ani'))));
 step('/kas rekap');

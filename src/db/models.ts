@@ -25,6 +25,10 @@ const GroupSchema = new Schema(
       treasurerId: { type: String, default: null },
       // Nama rekening/e-wallet tujuan kas yang sah; bukti dengan penerima lain ditandai.
       recipients: { type: [String], default: [] },
+      // Bukti dicek di channel tim inti (null = DM bendahara / channel kas).
+      reviewChannelId: { type: String, default: null },
+      // Channel tim inti tertutup untuk anggota biasa → siapa pun di sana boleh menyetujui.
+      reviewChannelPrivate: { type: Boolean, default: false },
     },
   },
   { timestamps: true },
@@ -212,6 +216,8 @@ const OnboardingSchema = new Schema(
       kasAmount: { type: Number, default: 0 },
       kasPeriod: { type: String, default: 'bulanan' },
       treasurerId: { type: String, default: null },
+      reviewChannelId: { type: String, default: null },
+      reviewChannelPrivate: { type: Boolean, default: false },
     },
     updatedAt: { type: Date, default: Date.now },
   },

@@ -60,6 +60,16 @@ export const COMMANDS: CommandSpec[] = [
           { name: 'periode', description: 'Periode iuran', type: 'string', required: true, choices: [{ name: 'mingguan', value: 'mingguan' }, { name: 'bulanan', value: 'bulanan' }] },
           { name: 'bendahara', description: 'Bendahara kelas', type: 'user' },
           { name: 'penerima', description: 'Nama rekening/e-wallet tujuan kas, pisahkan koma (untuk cek bukti)', type: 'string' },
+          {
+            name: 'cek_bukti',
+            description: 'Bukti transfer dicek di mana',
+            type: 'string',
+            choices: [
+              { name: 'DM bendahara', value: 'dm' },
+              { name: 'Channel tim inti (dibuatkan kalau belum ada)', value: 'channel' },
+            ],
+          },
+          { name: 'channel_tim', description: 'Pakai channel tim inti yang sudah ada (opsional)', type: 'channel' },
         ],
       },
       { name: 'rekap', description: 'Siapa sudah/belum bayar periode ini', options: [{ name: 'umumkan', description: 'Tampilkan ke semua (bendahara)', type: 'boolean' }] },

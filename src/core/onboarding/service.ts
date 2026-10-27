@@ -14,12 +14,13 @@ import {
   type Reply,
   type SpeechLevel,
 } from '../types.ts';
+import { ensureReviewChannel } from '../kas/review.ts';
 import { parseClassName, parseKas, parseMajors } from './parse.ts';
 
 // Setup kelas lewat wawancara santai, bukan slash command (prinsip "tidak menambah langkah").
-// Urutan: sapa → nama kelas → jurusan → gaya bahasa → channel → kas → bendahara → selesai.
+// Urutan: sapa → nama kelas → jurusan → gaya bahasa → channel → kas → bendahara → tempat cek bukti → selesai.
 
-type Step = 'greet' | 'kelas' | 'jurusan' | 'tutur' | 'channel' | 'kas' | 'bendahara';
+type Step = 'greet' | 'kelas' | 'jurusan' | 'tutur' | 'channel' | 'kas' | 'bendahara' | 'review';
 
 const say = (channelId: string, text: string, actions?: Action[]): OutgoingMessage => ({ to: { kind: 'channel', channelId }, text, actions });
 const deny = (text: string): Reply => ({ reply: { text, private: true } });
@@ -63,7 +64,23 @@ const QUESTIONS: Record<Exclude<Step, 'greet'>, (o: OnboardingDoc, ops: Platform
     text: `Catat: ${rupiah(o.data?.kasAmount ?? 0)} ${o.data?.kasPeriod === 'mingguan' ? 'per minggu' : 'per bulan'} 📝 Terus bendaharanya siapa? Tag aja orangnya ya.`,
     actions: [{ id: 'ob:bend:me', label: '🙋 Aku sendiri', kind: 'secondary' }],
   }),
+  review: () => ({
+    text:
+      'Terakhir: bukti transfer kas enaknya dicek bendahara di mana?\n' +
+      '• **Channel tim inti** — aku cari channel pengurus yang sudah ada, kalau belum ada aku buatin (privat, cuma pengurus yang bisa lihat) 🔒\n' +
+      '• **DM bendahara** — langsung ke chat pribadi bendahara',
+    actions: [
+      { id: 'ob:rev:channel', label: '🔒 Channel tim inti', kind: 'primary' },
+      { id: 'ob:rev:dm', label: '📩 DM bendahara', kind: 'secondary' },
+    ],
+  }),
 };
+
+/** Setelah bendahara dipilih: tanya tempat cek bukti kalau platform punya channel; kalau tidak, langsung selesai. */
+async function afterTreasurer(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessage[]> {
+  if (ops.findChannel || ops.createPrivateChannel) return [ask(await advance(o._id, 'review'), 'review', ops)];
+  return finish(o, ops);
+}
 
 function ask(o: OnboardingDoc, step: Exclude<Step, 'greet'>, ops: PlatformOps): OutgoingMessage {
   const q = QUESTIONS[step](o, ops);
@@ -141,7 +158,7 @@ export async function handleOnboardingMessage(msg: IncomingMessage, ops: Platfor
   if (o.step === 'bendahara') {
     const t = msg.mentions[0];
     if (!t) return [say(o.channelId, 'Tag orangnya ya (ketik @ lalu pilih namanya), atau klik **Aku sendiri** 😄')];
-    return finish(await advance(o._id, 'bendahara', { 'data.treasurerId': t.platformUserId }), ops);
+    return afterTreasurer(await advance(o._id, 'bendahara', { 'data.treasurerId': t.platformUserId }), ops);
   }
   return null;
 }
@@ -190,8 +207,23 @@ export async function handleOnboardingAction(ev: ActionEvent, ops: PlatformOps):
     return { update: done('Tanpa kas'), messages: out };
   }
   if (verb === 'bend' && arg === 'me' && o.step === 'bendahara') {
-    const out = await finish(await advance(o._id, 'bendahara', { 'data.treasurerId': ev.actor.platformUserId }), ops);
+    const out = await afterTreasurer(await advance(o._id, 'bendahara', { 'data.treasurerId': ev.actor.platformUserId }), ops);
     return { update: done('Bendahara dicatat'), messages: out };
+  }
+  if (verb === 'rev' && o.step === 'review') {
+    if (arg === 'dm') return { update: done('Bukti kas dicek lewat DM bendahara'), messages: await finish(o, ops) };
+    const ch = await ensureReviewChannel(ops, {
+      groupId: o.groupId,
+      nearChannelId: o.channelId,
+      allowUserIds: [o.data?.treasurerId ?? '', o.interviewerId ?? '', ev.actor.platformUserId],
+    });
+    const next = ch ? await advance(o._id, 'review', { 'data.reviewChannelId': ch.channelId, 'data.reviewChannelPrivate': ch.private }) : o;
+    const note = !ch
+      ? 'Waduh, aku nggak bisa bikin channel (izin Manage Channels belum ada) 😢 Sementara bukti dicek lewat DM bendahara ya.'
+      : ch.created
+        ? `Udah aku buatin ${channelRef(ch.channelId)} 🔒 — cuma kamu & bendahara yang bisa lihat (admin server juga). Tambah pengurus lain lewat pengaturan channel.`
+        : `Aku pakai ${channelRef(ch.channelId)} yang sudah ada${ch.private ? ' 🔒' : ' — tapi channel ini kelihatan semua anggota, jadi yang bisa menyetujui tetap cuma bendahara & admin'}.`;
+    return { update: done(ch ? 'Channel tim inti siap' : 'Lewat DM bendahara'), messages: [say(o.channelId, note), ...(await finish(next, ops))] };
   }
   return deny('Tombol ini udah lewat 😅 Lanjut jawab pertanyaan terakhir ya.');
 }
@@ -209,7 +241,15 @@ async function finish(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessa
   });
   await GroupModel.updateOne(
     { _id: g._id },
-    { $set: { 'kas.amount': d.kasAmount ?? 0, 'kas.period': (d.kasPeriod ?? 'bulanan') as KasPeriod, 'kas.treasurerId': d.treasurerId ?? null } },
+    {
+      $set: {
+        'kas.amount': d.kasAmount ?? 0,
+        'kas.period': (d.kasPeriod ?? 'bulanan') as KasPeriod,
+        'kas.treasurerId': d.treasurerId ?? null,
+        'kas.reviewChannelId': d.reviewChannelId ?? null,
+        'kas.reviewChannelPrivate': d.reviewChannelPrivate ?? false,
+      },
+    },
   );
   if (ops.listMembers) await upsertMembers(await ops.listMembers(o.groupId)).catch(() => undefined);
   await OnboardingModel.deleteOne({ _id: o._id });
@@ -229,6 +269,7 @@ async function finish(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessa
           { name: 'Gaya bahasa', value: g.speechLevel, inline: true },
           { name: 'Kas', value: kasLine, inline: true },
           { name: 'Bukti kas', value: d.kasChannelId ? channelRef(d.kasChannelId) : '—', inline: true },
+          ...(d.kasAmount ? [{ name: 'Dicek bendahara di', value: d.reviewChannelId ? channelRef(d.reviewChannelId) : 'DM bendahara', inline: true }] : []),
           { name: 'Info lomba', value: d.oppsChannelId ? channelRef(d.oppsChannelId) : '—', inline: true },
         ],
         footer: 'Mau ganti? Tag aku + "setup ulang".',

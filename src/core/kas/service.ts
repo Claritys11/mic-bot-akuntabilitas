@@ -19,9 +19,11 @@ import {
   type IncomingMessage,
   type OutgoingMessage,
   type Platform,
+  type PlatformOps,
   type Reply,
   type SpeechLevel,
 } from '../types.ts';
+import { ensureReviewChannel, saveReviewTarget } from './review.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
@@ -56,8 +58,11 @@ const refHashOf = (ref: string) => createHash('sha256').update(normalizeRef(ref)
  */
 const SCRUB_AFTER_REVIEW = { sender: null, bank: null, recipient: null, refId: null };
 
-const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) =>
-  ctx.isAdmin || (g.kas?.treasurerId != null && g.kas.treasurerId === ctx.actor.platformUserId);
+const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string }; channelId?: string }) =>
+  ctx.isAdmin ||
+  (g.kas?.treasurerId != null && g.kas.treasurerId === ctx.actor.platformUserId) ||
+  // Channel tim inti yang tertutup untuk anggota biasa: yang bisa melihat tombolnya = tim inti.
+  Boolean(g.kas?.reviewChannelPrivate && g.kas.reviewChannelId && g.kas.reviewChannelId === ctx.channelId);
 
 /** Gambar di channel kas → ekstraksi vision → verifikasi → tunggu persetujuan bendahara. */
 export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
@@ -144,6 +149,13 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     { id: ids.approve(id), label: '✅ Setujui', kind: 'success' as const },
     { id: ids.reject(id), label: '❌ Tolak', kind: 'danger' as const },
   ];
+  if (group.kas?.reviewChannelId) {
+    // Bendahara = channel tim inti: detail bukti & tombol hanya di sana; di tempat pengirim cukup ucapan terima kasih.
+    return [
+      { to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: `Makasih ${mention(msg.author)} 🙏 Buktinya udah aku terusin ke bendahara buat dicek.` },
+      { to: { kind: 'channel', channelId: group.kas.reviewChannelId }, text: `Ada bukti kas baru dari ${mention(msg.author)} 🧾${treasurer}`, card, actions: reviewActions },
+    ];
+  }
   if (msg.isDirect) {
     // Dikirim lewat chat pribadi → tombol ke bendahara (DM), bukan ke pengirim; cadangan: grup.
     const fallbackChannelId = group.kasChannelId ?? group.mainChannelId;
@@ -168,9 +180,22 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
 }
 
 /** Bukti dikirim lewat chat pribadi → kabari pengirimnya di chat itu juga (tombol ada di chat bendahara). */
-function notifyPrivateSender(proof: { channelId: string }, group: GroupDoc, text: string): OutgoingMessage[] {
+/**
+ * Bukti ditinjau di tempat lain (chat pribadi bendahara / channel tim inti) → kabari pengirimnya.
+ * Lewat chat pribadi pengirim kalau bukti dikirim lewat DM; selain itu DM ke pengirim (penolakan tidak
+ * pernah diumumkan di grup).
+ */
+function notifyPrivateSender(
+  proof: { channelId: string; member: { platformUserId: string; displayName: string } },
+  group: GroupDoc,
+  ev: { platform: ActionEvent['platform']; groupId: string; channelId: string },
+  text: string,
+): OutgoingMessage[] {
+  if (ev.channelId === proof.channelId) return []; // pengirim melihat sendiri hasilnya di pesan yang sama
   const viaGroup = proof.channelId === group.kasChannelId || proof.channelId === group.mainChannelId;
-  return viaGroup ? [] : [{ to: { kind: 'channel', channelId: proof.channelId }, text }];
+  if (!viaGroup) return [{ to: { kind: 'channel', channelId: proof.channelId }, text }];
+  const member = { platform: ev.platform, groupId: ev.groupId, platformUserId: proof.member.platformUserId, displayName: proof.member.displayName };
+  return [{ to: { kind: 'dm', member, fallbackChannelId: proof.channelId, fallbackText: `${mention(member)}, ada kabar soal bukti kasmu — buka DM dari aku ya 🙏` }, text }];
 }
 
 async function approve(proofId: string, nominal: number, ev: ActionEvent | FormSubmit, group: GroupDoc): Promise<Reply> {
@@ -216,7 +241,7 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
       },
       actions: [],
     },
-    messages: notifyPrivateSender(proof, group, `Kas kamu ${rupiah(nominal)} udah tercatat untuk ${entries.map((e) => periodLabel(e.period)).join(', ')} ✅ Makasih ya!`),
+    messages: notifyPrivateSender(proof, group, ev, `Kas kamu ${rupiah(nominal)} udah tercatat untuk ${entries.map((e) => periodLabel(e.period)).join(', ')} ✅ Makasih ya!`),
   };
 }
 
@@ -240,7 +265,7 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
         },
         actions: [],
       },
-      messages: notifyPrivateSender(proof, group, `Bukti transfer kasmu belum bisa dicatat 🙏 Coba hubungi ${mention(ev.actor)} ya.`),
+      messages: notifyPrivateSender(proof, group, ev, `Bukti transfer kasmu belum bisa dicatat 🙏 Coba hubungi ${mention(ev.actor)} ya.`),
     };
   }
   if (verb === 'ok') {
@@ -270,7 +295,7 @@ export async function handleKasForm(ev: FormSubmit): Promise<Reply> {
 
 // ---------- Slash command ----------
 
-export async function kasAtur(cmd: CommandInvocation): Promise<Reply> {
+export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Promise<Reply> {
   if (!cmd.isAdmin) return { reply: { text: 'Hanya pengurus kelas (admin server) yang bisa mengatur kas.', private: true } };
   const group = await getGroup(cmd.platform, cmd.groupId);
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
@@ -284,6 +309,30 @@ export async function kasAtur(cmd: CommandInvocation): Promise<Reply> {
       : (group.kas?.recipients ?? []);
   // Set per field: jangan menghapus pengaturan kas lain yang tidak disebut.
   await GroupModel.updateOne({ _id: group._id }, { $set: { 'kas.amount': amount, 'kas.period': period, 'kas.treasurerId': treasurerId, 'kas.recipients': recipients } });
+
+  // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
+  let reviewNote: string | null = null;
+  const wantChannel = cmd.options.cek_bukti === 'channel' || typeof cmd.options.channel_tim === 'string';
+  if (wantChannel) {
+    const ch = await ensureReviewChannel(ops, {
+      groupId: cmd.groupId,
+      nearChannelId: cmd.channelId,
+      allowUserIds: [treasurerId ?? '', cmd.actor.platformUserId],
+      channelId: (cmd.options.channel_tim as string | undefined) ?? null,
+    });
+    if (ch) {
+      await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'channel', channel: ch });
+      reviewNote = ch.created
+        ? `${channelRef(ch.channelId)} (baru dibuat, privat untuk tim inti 🔒)`
+        : `${channelRef(ch.channelId)}${ch.private ? ' 🔒' : ' — ⚠️ channel ini bisa dilihat semua anggota, jadi hanya bendahara/admin yang bisa menyetujui'}`;
+    } else {
+      reviewNote = 'channel tim inti tidak bisa dibuat (izin Manage Channels?) — sementara lewat DM bendahara';
+      await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'dm' });
+    }
+  } else if (cmd.options.cek_bukti === 'dm') {
+    await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'dm' });
+    reviewNote = 'DM bendahara';
+  }
   return {
     reply: {
       card: {
@@ -293,6 +342,7 @@ export async function kasAtur(cmd: CommandInvocation): Promise<Reply> {
           { name: 'Iuran', value: `${rupiah(amount)} / ${period === 'bulanan' ? 'bulan' : 'minggu'}`, inline: true },
           { name: 'Bendahara', value: treasurerId ? mention({ platformUserId: treasurerId }) : '—', inline: true },
           { name: 'Channel bukti', value: group.kasChannelId ? channelRef(group.kasChannelId) : 'belum diatur di /setup', inline: true },
+          ...(reviewNote ? [{ name: 'Bukti dicek di', value: reviewNote, inline: false }] : []),
           { name: 'Rekening tujuan', value: recipients.length ? recipients.join(', ') : 'belum diatur — tambahkan opsi `penerima` agar bukti ke rekening lain ditandai', inline: false },
         ],
         footer: 'Kirim foto bukti transfer di channel kas. Bot hanya mencatat — uang tidak dipegang bot.',

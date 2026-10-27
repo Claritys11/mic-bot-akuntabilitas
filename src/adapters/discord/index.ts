@@ -310,6 +310,41 @@ function platformOps(client: Client) {
         return null;
       }
     },
+    async findChannel(groupId: string, names: string[]) {
+      const guild = await client.guilds.fetch(groupId);
+      const channels = await guild.channels.fetch();
+      const hit = channels.find((c) => c?.type === ChannelType.GuildText && names.includes(c.name));
+      return hit?.id ?? null;
+    },
+    async createPrivateChannel(groupId: string, name: string, topic: string, nearChannelId: string, allowUserIds: string[]) {
+      try {
+        const guild = await client.guilds.fetch(groupId);
+        const near = await client.channels.fetch(nearChannelId).catch(() => null);
+        const parent = near && 'parentId' in near ? near.parentId : null;
+        const allow = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
+        const ch = await guild.channels.create({
+          name,
+          type: ChannelType.GuildText,
+          topic,
+          parent: parent ?? undefined,
+          permissionOverwrites: [
+            { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+            { id: client.user!.id, allow },
+            ...[...new Set(allowUserIds)].map((id) => ({ id, allow })),
+          ],
+        });
+        return ch.id;
+      } catch (err) {
+        console.error(`[discord] gagal bikin channel privat #${name}:`, (err as Error).message);
+        return null;
+      }
+    },
+    async isPrivateChannel(groupId: string, channelId: string) {
+      const guild = await client.guilds.fetch(groupId);
+      const ch = await guild.channels.fetch(channelId).catch(() => null);
+      if (!ch || !('permissionsFor' in ch)) return false;
+      return !ch.permissionsFor(guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel);
+    },
     async listMembers(groupId: string) {
       const guild = await client.guilds.fetch(groupId);
       const members = await guild.members.fetch();

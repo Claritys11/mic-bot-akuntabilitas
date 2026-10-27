@@ -158,6 +158,12 @@ export interface JoinEvent {
  */
 export interface PlatformOps {
   createChannel?(groupId: string, name: string, topic: string, nearChannelId: string): Promise<string | null>;
+  /** Cari channel teks yang sudah ada dengan salah satu nama ini (tidak membuat). */
+  findChannel?(groupId: string, names: string[]): Promise<string | null>;
+  /** Buat channel privat: hanya userIds (+ admin server & bot) yang bisa melihat. */
+  createPrivateChannel?(groupId: string, name: string, topic: string, nearChannelId: string, allowUserIds: string[]): Promise<string | null>;
+  /** true kalau anggota biasa (@everyone) tidak bisa melihat channel ini. */
+  isPrivateChannel?(groupId: string, channelId: string): Promise<boolean>;
   listMembers?(groupId: string): Promise<Member[]>;
 }
 

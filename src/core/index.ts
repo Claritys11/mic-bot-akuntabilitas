@@ -79,7 +79,7 @@ export function createCore(llm: LLMProvider): Core {
     'janji.list': janjiList,
     'janji.selesai': janjiSelesai,
     'rapor-kelas': raporKelas,
-    'kas.atur': kasAtur,
+    'kas.atur': (cmd) => kasAtur(cmd, opsFor(cmd.platform)),
     'kas.rekap': kasRekap,
     'kas.ekspor': kasEkspor,
     rangkum: (cmd) => rangkum(llm, cmd),
