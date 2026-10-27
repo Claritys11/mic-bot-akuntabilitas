@@ -19,14 +19,34 @@ function decode(data: Uint8Array): Rgba | null {
     return { width: img.width, height: img.height, data: img.data };
   }
   if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
-    // Cek ukuran dari header IHDR SEBELUM decode, supaya PNG "bom" (kecil terkompres, raksasa saat dibuka) ditolak.
-    if (data.length < 24) return null;
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    if (view.getUint32(16) * view.getUint32(20) > MAX_PIXELS) return null;
+    // Cek ukuran dari header SEBELUM decode, supaya PNG "bom" (kecil terkompres, raksasa saat dibuka) ditolak.
+    if (!pngHeaderOk(data)) return null;
     const img = PNG.sync.read(Buffer.from(data));
+    if (img.width * img.height > MAX_PIXELS) return null;
     return { width: img.width, height: img.height, data: img.data };
   }
   return null; // WebP dll. belum didukung → hanya SHA-256
+}
+
+/**
+ * Struktur chunk PNG: harus tepat satu IHDR (panjang 13) sebagai chunk pertama, dengan dimensi wajar.
+ * IHDR kedua bisa membuat decoder memakai dimensi lain dari yang kita cek → ditolak.
+ */
+function pngHeaderOk(data: Uint8Array): boolean {
+  if (data.length < 33) return false;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const type = (at: number) => String.fromCharCode(data[at]!, data[at + 1]!, data[at + 2]!, data[at + 3]!);
+  if (view.getUint32(8) !== 13 || type(12) !== 'IHDR') return false;
+  if (view.getUint32(16) * view.getUint32(20) > MAX_PIXELS) return false;
+  let ihdr = 0;
+  for (let at = 8; at + 8 <= data.length; ) {
+    const len = view.getUint32(at);
+    const t = type(at + 4);
+    if (t === 'IHDR' && ++ihdr > 1) return false;
+    if (t === 'IEND') break;
+    at += 12 + len;
+  }
+  return ihdr === 1;
 }
 
 /** Rata-rata kecerahan per sel grid w×h (area averaging, aman untuk gambar besar). */

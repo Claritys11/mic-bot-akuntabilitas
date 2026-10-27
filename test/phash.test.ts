@@ -66,6 +66,12 @@ describe('perceptual hash bukti transfer', () => {
     view.setUint32(20, 100_000);
     expect(perceptualHash(png)).toBeNull();
   });
+  test('PNG dengan IHDR kedua ditolak', () => {
+    const png = asPng(receipt(1, 16, 16), 16, 16);
+    const ihdr = png.slice(8, 33); // panjang + tipe + 13 byte data + CRC
+    const evil = new Uint8Array([...png.slice(0, 33), ...ihdr, ...png.slice(33)]);
+    expect(perceptualHash(evil)).toBeNull();
+  });
   test('format tidak dikenal / rusak → null, tidak crash', () => {
     expect(perceptualHash(new Uint8Array([1, 2, 3, 4, 5]))).toBeNull();
     expect(perceptualHash(new Uint8Array([0xff, 0xd8, 0, 0]))).toBeNull();
