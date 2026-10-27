@@ -5,7 +5,7 @@ import { createPendingPromise } from '../promises/service.ts';
 import { DAY_MS, formatWIB, now, wibParts } from '../time.ts';
 import type { LLMProvider } from '../../llm/provider.ts';
 import { mention, type Action, type ActionEvent, type Card, type CommandInvocation, type IncomingMessage, type OutgoingMessage, type Reply } from '../types.ts';
-import { importLinkAsDraft, publishDraft, type PageReader } from './importer.ts';
+import { DRAFT_PREFIX, importLinkAsDraft, publishDraft, type PageReader } from './importer.ts';
 import { pickNextOpportunity, relevance } from './relevance.ts';
 import { SEED_OPPORTUNITIES } from './seed.ts';
 
@@ -48,7 +48,7 @@ function oppCard(o: OpportunityDoc): Card {
       ? 'Promosi — konten berbayar dari penyelenggara.'
       : `${auto ? `Dibaca otomatis dari ${new URL(o.link).hostname.replace(/^www\./, '')} — cek ulang di link resmi. ` : ''}Klik "Bentuk tim" untuk membuat thread & janji awal.`;
   return {
-    title: `${o.sponsored ? '[Promosi] ' : ''}${o.kind === 'beasiswa' ? '🎓' : '🏆'} ${o.title.replace(/^\[draf\] /, '')}`,
+    title: `${o.sponsored ? '[Promosi] ' : ''}${o.kind === 'beasiswa' ? '🎓' : '🏆'} ${o.title.replace(DRAFT_PREFIX, '')}`,
     tone: o.draft ? 'warn' : o.sponsored ? 'warn' : 'info',
     description: o.description || undefined,
     fields: [

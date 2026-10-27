@@ -34,6 +34,10 @@ describe('normalisasi hasil baca halaman lomba', () => {
     const r = normalizeExtraction({ ...base, summary: 'halo {{@123}} semua' }, NOW);
     expect(r.ok && r.data.description).not.toContain('{{@');
   });
+  test('alasan penolakan tidak membawa teks mentah AI (token mention)', () => {
+    const r = normalizeExtraction({ ...base, level: 'mahasiswa {{@1}}' }, NOW);
+    expect(!r.ok && r.reason).not.toContain('{{@');
+  });
   test('format deadline aneh → null', () => {
     expect(deadlineOf('30 Nov 2026')).toBeNull();
     expect(deadlineOf(null)).toBeNull();

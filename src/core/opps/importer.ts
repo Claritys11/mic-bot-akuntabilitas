@@ -46,7 +46,7 @@ export function normalizeExtraction(x: ExtractedOpportunity, now: Date): { ok: t
   const deadline = deadlineOf(x.deadline);
   if (!deadline) return { ok: false, reason: 'deadline pendaftarannya tidak tertulis jelas' };
   if (deadline <= now) return { ok: false, reason: 'pendaftarannya sudah tutup' };
-  if (x.level && /mahasiswa|sd\/smp/i.test(x.level)) return { ok: false, reason: `untuk jenjang ${x.level}, bukan SMA/SMK` };
+  if (x.level && /mahasiswa|sd\/smp/i.test(x.level)) return { ok: false, reason: `untuk jenjang ${clean(x.level, 20)}, bukan SMA/SMK` };
   const allowed = new Set<string>(OPP_TAGS);
   const tags = [...new Set(x.tags.map((t) => t.toLowerCase().trim()).filter((t) => allowed.has(t)))].slice(0, 5);
   if (x.kind === 'beasiswa' && !tags.includes('beasiswa')) tags.push('beasiswa');
@@ -104,20 +104,25 @@ export async function importLinkAsDraft(
   }
   const r = await extractFromPage(llm, page, input.now);
   if (!r.ok) return r;
-  const doc = await OpportunityModel.findOneAndUpdate(
-    // Draf memakai judul unik sementara supaya tidak bentrok dengan lomba yang sudah ada.
-    { groupId: input.groupId, title: `[draf] ${r.data.title}`.slice(0, 140) },
-    { $set: { ...r.data, groupId: input.groupId, addedBy: input.addedBy, draft: true, source: 'link', sponsored: false } },
-    { upsert: true, returnDocument: 'after' },
-  ).lean<OpportunityDoc>();
-  return { ok: true, doc: doc!, duplicate: false };
+  // Selalu dokumen baru (judul draf diberi penanda acak) — draf yang sedang ditinjau pengurus tidak bisa ditimpa.
+  const tag = Math.random().toString(36).slice(2, 8);
+  const created = await OpportunityModel.create({
+    ...r.data,
+    title: `[draf ${tag}] ${r.data.title}`.slice(0, 160),
+    groupId: input.groupId,
+    addedBy: input.addedBy,
+    draft: true,
+    source: 'link',
+    sponsored: false,
+  });
+  return { ok: true, doc: created.toObject() as OpportunityDoc, duplicate: false };
 }
 
 /** Draf disetujui → tampil untuk kelas ini. Kalau judul sudah ada, perbarui yang lama. */
 export async function publishDraft(id: string, groupId: string): Promise<OpportunityDoc | null> {
   const draft = await OpportunityModel.findOne({ _id: id, groupId, draft: true }).lean<OpportunityDoc>();
   if (!draft) return null;
-  const title = draft.title.replace(/^\[draf\] /, '');
+  const title = draft.title.replace(DRAFT_PREFIX, '');
   const fields: Partial<OpportunityDoc> = { ...draft };
   delete fields._id;
   const saved = await OpportunityModel.findOneAndUpdate(
@@ -128,6 +133,8 @@ export async function publishDraft(id: string, groupId: string): Promise<Opportu
   if (String(saved!._id) !== id) await OpportunityModel.deleteOne({ _id: id });
   return saved;
 }
+
+export const DRAFT_PREFIX = /^\[draf[^\]]*\] /;
 
 export const FEED_ITEMS_PER_RUN = 5;
 
@@ -154,14 +161,17 @@ export async function importFeeds(llm: LLMProvider, reader: PageReader, feeds: s
       try {
         const page = await reader.page(item.link);
         const r = await extractFromPage(llm, { ...page, text: `${item.summary}\n${page.text}`.slice(0, 12_000) }, now);
-        if (r.ok && !(await OpportunityModel.exists({ link: r.data.link }))) {
-          await OpportunityModel.updateOne(
-            { groupId: null, title: r.data.title },
-            { $set: { ...r.data, groupId: null, addedBy: `feed:${host}`, source: `feed:${host}`, draft: false, sponsored: false } },
+        // Data feed hanya MENAMBAH: lomba yang sudah ada (link/judul sama) tidak pernah ditimpa isi dari internet.
+        if (r.ok && !(await OpportunityModel.exists({ $or: [{ link: r.data.link }, { groupId: null, title: r.data.title }] }))) {
+          const res = await OpportunityModel.updateOne(
+            { link: r.data.link, groupId: null },
+            { $setOnInsert: { ...r.data, groupId: null, addedBy: `feed:${host}`, source: `feed:${host}`, draft: false, sponsored: false } },
             { upsert: true },
-          );
-          added.push(r.data.title);
-          accepted = true;
+          ).catch(() => null); // bentrok judul unik → lewati
+          if (res?.upsertedCount) {
+            added.push(r.data.title);
+            accepted = true;
+          }
         }
       } catch (err) {
         console.warn(`[lomba] item ${item.link} gagal: ${(err as Error).message}`);

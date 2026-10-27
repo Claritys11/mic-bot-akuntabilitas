@@ -21,6 +21,14 @@ describe('cegah SSRF', () => {
   );
 });
 
+describe('cek DNS sebelum koneksi (tidak hanya lewat hook lookup)', () => {
+  test('domain yang mengarah ke loopback ditolak oleh pengecekan awal', async () => {
+    const { assertResolvesPublic } = await import('../src/tools/web.ts');
+    await expect(assertResolvesPublic('localtest.me')).rejects.toBeInstanceOf(FetchRefused);
+    await expect(assertResolvesPublic('127.0.0.1')).rejects.toBeInstanceOf(FetchRefused);
+  });
+});
+
 describe('HTML → teks', () => {
   test('ambil og:title, buang skrip & navigasi', () => {
     const r = htmlToText(

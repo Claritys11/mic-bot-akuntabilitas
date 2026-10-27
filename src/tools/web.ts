@@ -1,4 +1,5 @@
 import { lookup as dnsLookup } from 'node:dns';
+import { lookup as dnsLookupAsync } from 'node:dns/promises';
 import https from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 
@@ -106,9 +107,24 @@ interface RawResponse {
   body: string;
 }
 
+/** Cek DNS sebelum koneksi (lapis pertama); lookup socket mengecek lagi & mengunci IP (lapis kedua). */
+export async function assertResolvesPublic(host: string): Promise<void> {
+  const addrs = isIP(host) ? [{ address: host }] : await dnsLookupAsync(host, { all: true }).catch(() => []);
+  if (!addrs.length) throw new FetchRefused('Domain tidak ditemukan');
+  if (addrs.some((a) => isBlockedAddress(a.address))) throw new FetchRefused('Alamat tidak diizinkan');
+}
+
 function request(url: URL): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
     const host = url.hostname.replace(/^\[|\]$/g, '');
+    // Batas waktu TOTAL (opsi timeout bawaan hanya untuk jeda antar-paket; server lambat bisa menahan lama).
+    const deadline = setTimeout(() => req.destroy(new FetchRefused('Halaman terlalu lama merespons')), TIMEOUT_MS);
+    const done = <T>(fn: (v: T) => void) => (v: T) => {
+      clearTimeout(deadline);
+      fn(v);
+    };
+    resolve = done(resolve);
+    reject = done(reject);
     const req = https.request(
       {
         host,
@@ -158,6 +174,7 @@ export interface FetchedPage {
 export async function safeFetch(raw: string): Promise<FetchedPage> {
   let url = checkUrl(raw);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    await assertResolvesPublic(url.hostname.replace(/^\[|\]$/g, ''));
     const res = await request(url);
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.location;
