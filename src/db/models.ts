@@ -153,6 +153,8 @@ export const BUFFER_TTL_SECONDS = 48 * 3600;
 const MessageBufferSchema = new Schema({
   groupId: { type: String, required: true },
   channelId: { type: String, required: true },
+  // ID penulis untuk hak hapus data — nama tampilan bisa diganti/ditiru, jadi tidak dipakai sebagai kunci.
+  authorId: { type: String, default: null },
   authorName: { type: String, required: true },
   text: { type: String, required: true },
   createdAt: { type: Date, required: true, default: Date.now },

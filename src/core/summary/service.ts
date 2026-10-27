@@ -21,6 +21,7 @@ export async function bufferMessage(msg: IncomingMessage): Promise<void> {
   await MessageBufferModel.create({
     groupId: msg.groupId,
     channelId: msg.channelId,
+    authorId: msg.author.platformUserId,
     authorName: msg.author.displayName,
     text: text.slice(0, 1000),
     createdAt: msg.timestamp,

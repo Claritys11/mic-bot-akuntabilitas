@@ -26,11 +26,11 @@ export interface DeleteReport {
  * namanya dianonimkan — satu-satunya pengecualian aturan append-only, lewat driver langsung.
  */
 export async function deleteMemberData(platform: string, groupId: string, userId: string): Promise<DeleteReport> {
-  const member = await MemberModel.findOne({ platform, groupId, platformUserId: userId }).lean();
   const [janji, bukti, buffer, tx] = await Promise.all([
     PromiseModel.deleteMany({ groupId, 'owner.platformUserId': userId }),
     KasProofModel.deleteMany({ groupId, 'member.platformUserId': userId }),
-    member ? MessageBufferModel.deleteMany({ groupId, authorName: member.displayName }) : Promise.resolve({ deletedCount: 0 }),
+    // Berdasarkan ID, bukan nama tampilan (nama bisa ditiru orang lain). Buffer lama tanpa ID hilang sendiri ≤ 48 jam.
+    MessageBufferModel.deleteMany({ groupId, authorId: userId }),
     TransactionModel.collection.updateMany({ groupId, memberId: userId }, { $set: { memberId: null, memberName: DELETED } }),
   ]);
   await Promise.all([
