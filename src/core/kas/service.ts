@@ -47,6 +47,15 @@ const ids = {
 /** Screenshot bukti transfer jauh di bawah ini; gambar lebih besar tidak diunduh. */
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
 
+const refHashOf = (ref: string) => createHash('sha256').update(normalizeRef(ref)).digest('hex');
+
+/**
+ * Mode "tanpa simpan bukti": setelah ditinjau, detail pribadi di bukti (nama pengirim/penerima, bank,
+ * nomor referensi) dihapus. Yang tersisa: nominal, tanggal, hash gambar & hash refId (cek duplikat).
+ * Gambar sendiri memang tidak pernah disimpan.
+ */
+const SCRUB_AFTER_REVIEW = { sender: null, bank: null, recipient: null, refId: null };
+
 const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) =>
   ctx.isAdmin || (g.kas?.treasurerId != null && g.kas.treasurerId === ctx.actor.platformUserId);
 
@@ -68,7 +77,7 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     mimeType: image.contentType ?? 'image/jpeg',
   });
 
-  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1 }).lean();
+  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1, refHash: 1 }).lean();
   const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
   const clean = (v: string | null | undefined) => (v ? sanitize(v).slice(0, 100) : null);
   const proof = {
@@ -87,7 +96,8 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     seenHashes: new Set(previous.map((p) => p.imageHash)),
     seenPHashes: previous.map((p) => p.imagePHash).filter((h): h is string => Boolean(h)),
     recipients: group.kas?.recipients ?? [],
-    seenRefIds: new Set(previous.filter((p) => p.refId).map((p) => normalizeRef(p.refId!))),
+    seenRefIds: new Set(previous.map((p) => p.refHash ?? (p.refId ? refHashOf(p.refId) : null)).filter((h): h is string => Boolean(h))),
+    refKey: refHashOf,
   });
 
   const transferAt = proof.tanggal?.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(`${proof.tanggal}T05:00:00Z`) : at;
@@ -104,6 +114,7 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     sender: clean(extracted?.pengirim),
     recipient: proof.penerima,
     refId: proof.refId,
+    refHash: proof.refId ? refHashOf(proof.refId) : null,
     flags,
     period: periodKey(transferAt > at ? at : transferAt, kasPeriod),
   });
@@ -165,8 +176,8 @@ function notifyPrivateSender(proof: { channelId: string }, group: GroupDoc, text
 async function approve(proofId: string, nominal: number, ev: ActionEvent | FormSubmit, group: GroupDoc): Promise<Reply> {
   const proof = await KasProofModel.findOneAndUpdate(
     { _id: proofId, groupId: ev.groupId, status: 'pending' },
-    { $set: { status: 'approved', nominal, reviewedBy: ev.actor.platformUserId, reviewedAt: now() } },
-    { returnDocument: 'after' },
+    { $set: { status: 'approved', nominal, reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } },
+    { returnDocument: 'before' }, // versi sebelum dibersihkan: refId masih ada untuk catatan ledger
   ).lean();
   if (!proof) return { reply: { text: 'Bukti ini sudah diproses.', private: true } };
 
@@ -186,7 +197,8 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
       amount: i === count - 1 ? nominal - per * (count - 1) : per,
       kind: 'iuran',
       period,
-      note: proof.refId ? `ref ${proof.refId}` : '',
+      // 4 karakter terakhir cukup untuk mencocokkan dengan mutasi bank tanpa menyimpan nomor lengkap.
+      note: proof.refId ? `ref …${normalizeRef(proof.refId).slice(-4)}` : '',
       proofId: proof._id,
       createdBy: ev.actor.platformUserId,
     });
@@ -217,7 +229,7 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
   if (!proof || proof.status !== 'pending') return { reply: { text: 'Bukti ini sudah diproses.', private: true } };
 
   if (verb === 'no') {
-    await KasProofModel.updateOne({ _id: id }, { $set: { status: 'rejected', reviewedBy: ev.actor.platformUserId, reviewedAt: now() } });
+    await KasProofModel.updateOne({ _id: id }, { $set: { status: 'rejected', reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } });
     return {
       update: {
         text: '',

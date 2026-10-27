@@ -34,6 +34,8 @@ export class OpenRouterProvider implements LLMProvider {
     private readonly jsonMode: boolean,
     private readonly timeoutMs: number,
     private readonly providerSort?: 'latency' | 'throughput' | 'price',
+    /** 'deny' = hanya provider yang tidak menyimpan/melatih dari data (bukti kas anak sekolah ikut terkirim). */
+    private readonly dataCollection: 'allow' | 'deny' = 'deny',
   ) {
     this.enabled = Boolean(text.apiKey);
   }
@@ -71,8 +73,8 @@ export class OpenRouterProvider implements LLMProvider {
   }
 
   static fromConfig(config: Config): OpenRouterProvider {
-    const { text, vision, jsonMode, timeoutMs, providerSort } = config.llm;
-    return new OpenRouterProvider(text, vision, jsonMode, timeoutMs, providerSort);
+    const { text, vision, jsonMode, timeoutMs, providerSort, dataCollection } = config.llm;
+    return new OpenRouterProvider(text, vision, jsonMode, timeoutMs, providerSort, dataCollection);
   }
 
   usage(): LLMUsage {
@@ -109,7 +111,9 @@ export class OpenRouterProvider implements LLMProvider {
     };
     if (opts.json && this.jsonMode) body.response_format = { type: 'json_object' };
     // Field khusus OpenRouter; endpoint lain (Hermes lokal) tidak dikirimi.
-    if (this.providerSort && new URL(ep.baseUrl).hostname.endsWith('openrouter.ai')) body.provider = { sort: this.providerSort };
+    if (new URL(ep.baseUrl).hostname.endsWith('openrouter.ai')) {
+      body.provider = { ...(this.providerSort ? { sort: this.providerSort } : {}), ...(this.dataCollection === 'deny' ? { data_collection: 'deny' } : {}) };
+    }
 
     const res = await fetch(`${ep.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',

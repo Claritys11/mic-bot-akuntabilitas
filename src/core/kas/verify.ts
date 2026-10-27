@@ -51,8 +51,10 @@ export interface VerifyContext {
   seenPHashes?: string[];
   /** Nama rekening/e-wallet tujuan kas yang sah. Kosong = belum diatur, penerima tidak dicek. */
   recipients?: string[];
-  /** refId yang sudah dipakai, dalam huruf kecil. */
+  /** Kunci refId yang sudah dipakai (lihat refKey). */
   seenRefIds: Set<string>;
+  /** Ubah refId jadi kunci pembanding; default normalizeRef. Service memakai hash agar refId mentah tidak disimpan. */
+  refKey?: (ref: string) => string;
 }
 
 export const normalizeRef = (ref: string) => ref.replace(/\s+/g, '').toLowerCase();
@@ -66,7 +68,7 @@ export function verifyProof(p: ProofData, ctx: VerifyContext): ProofFlag[] {
     if (!p.penerima?.trim()) flags.push('recipient_unreadable');
     else if (!ctx.recipients.some((r) => recipientMatches(p.penerima!, r))) flags.push('recipient_mismatch');
   }
-  if (p.refId && ctx.seenRefIds.has(normalizeRef(p.refId))) flags.push('duplicate_ref');
+  if (p.refId && ctx.seenRefIds.has((ctx.refKey ?? normalizeRef)(p.refId))) flags.push('duplicate_ref');
 
   if (p.nominal == null || p.nominal <= 0) flags.push('amount_unreadable');
   else if (ctx.amount > 0 && p.nominal % ctx.amount !== 0) flags.push('amount_mismatch');

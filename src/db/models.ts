@@ -84,6 +84,8 @@ const KasProofSchema = new Schema(
     bank: { type: String, default: null },
     sender: { type: String, default: null },
     recipient: { type: String, default: null },
+    // refId mentah dihapus setelah ditinjau; hash-nya tetap untuk cek duplikat.
+    refHash: { type: String, default: null },
     refId: { type: String, default: null },
     flags: { type: [String], default: [] },
     period: { type: String, required: true },
@@ -95,6 +97,7 @@ const KasProofSchema = new Schema(
 );
 KasProofSchema.index({ groupId: 1, imageHash: 1 });
 KasProofSchema.index({ groupId: 1, refId: 1 });
+KasProofSchema.index({ groupId: 1, refHash: 1 });
 export const KasProofModel = mongoose.model('KasProof', KasProofSchema);
 
 // ---------- Kas: ledger (append-only) ----------

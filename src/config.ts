@@ -29,6 +29,8 @@ const EnvSchema = z.object({
   // OpenRouter: pilih penyedia model tercepat. Untuk GLM, penyedia default bisa "berpikir"
   // ratusan token dulu (3–9 dtk); urut latency ~1–2 dtk. "default" = biarkan OpenRouter memilih.
   LLM_PROVIDER_SORT: z.preprocess(emptyToUndefined, z.enum(['latency', 'throughput', 'price', 'default']).default('latency')),
+  // OpenRouter: 'deny' = hanya provider yang tidak menyimpan/melatih dari prompt (data siswa). Default deny.
+  LLM_DATA_COLLECTION: z.preprocess(emptyToUndefined, z.enum(['allow', 'deny']).default('deny')),
   LLM_TIMEOUT_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(60_000)),
 
   TZ: z.preprocess(emptyToUndefined, z.string().default('Asia/Jakarta')),
@@ -52,6 +54,7 @@ export interface Config {
     jsonMode: boolean;
     timeoutMs: number;
     providerSort?: 'latency' | 'throughput' | 'price';
+    dataCollection: 'allow' | 'deny';
   };
   demoTimeScale: number;
 }
@@ -82,6 +85,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       jsonMode: e.LLM_JSON_MODE === 'true',
       timeoutMs: e.LLM_TIMEOUT_MS,
       providerSort: e.LLM_PROVIDER_SORT === 'default' ? undefined : e.LLM_PROVIDER_SORT,
+      dataCollection: e.LLM_DATA_COLLECTION,
     },
     demoTimeScale: e.DEMO_TIME_SCALE,
   };
