@@ -23,6 +23,7 @@ import {
   type SpeechLevel,
 } from '../types.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
+import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
 
 const ProofSchema = z.object({
@@ -54,13 +55,14 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
 
   const data = await image.getData();
   const imageHash = createHash('sha256').update(data).digest('hex');
+  const imagePHash = perceptualHash(data);
   const at = now();
   const extracted = await visionJson(llm, ProofSchema, kasProofPrompt(formatWIB(at)), {
     data,
     mimeType: image.contentType ?? 'image/jpeg',
   });
 
-  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, refId: 1 }).lean();
+  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1 }).lean();
   const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
   const clean = (v: string | null | undefined) => (v ? sanitize(v).slice(0, 100) : null);
   const proof = {
@@ -68,6 +70,8 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     tanggal: clean(extracted?.tanggal),
     refId: clean(extracted?.refId),
     imageHash,
+    imagePHash,
+    penerima: clean(extracted?.penerima),
     isTransferProof: extracted?.isTransferProof,
   };
   const flags = verifyProof(proof, {
@@ -75,6 +79,8 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     amount: group.kas?.amount ?? 0,
     period: kasPeriod,
     seenHashes: new Set(previous.map((p) => p.imageHash)),
+    seenPHashes: previous.map((p) => p.imagePHash).filter((h): h is string => Boolean(h)),
+    recipients: group.kas?.recipients ?? [],
     seenRefIds: new Set(previous.filter((p) => p.refId).map((p) => normalizeRef(p.refId!))),
   });
 
@@ -85,10 +91,12 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
     channelId: msg.channelId,
     member: { platformUserId: msg.author.platformUserId, displayName: msg.author.displayName },
     imageHash,
+    imagePHash,
     nominal: proof.nominal,
     transferDate: proof.tanggal,
     bank: clean(extracted?.bank),
     sender: clean(extracted?.pengirim),
+    recipient: proof.penerima,
     refId: proof.refId,
     flags,
     period: periodKey(transferAt > at ? at : transferAt, kasPeriod),
@@ -103,6 +111,7 @@ export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, gro
       { name: 'Nominal', value: proof.nominal ? rupiah(proof.nominal) : '—', inline: true },
       { name: 'Tanggal', value: proof.tanggal ?? '—', inline: true },
       { name: 'Bank/e-wallet', value: clean(extracted?.bank) ?? '—', inline: true },
+      { name: 'Ke', value: proof.penerima ?? '—', inline: true },
       { name: 'Ref', value: proof.refId ?? '—', inline: true },
       { name: 'Periode', value: periodLabel(doc.period), inline: true },
     ],
@@ -251,7 +260,12 @@ export async function kasAtur(cmd: CommandInvocation): Promise<Reply> {
   const period = (cmd.options.periode as KasPeriod) ?? 'bulanan';
   const treasurerId = (cmd.options.bendahara as string | undefined) ?? group.kas?.treasurerId ?? null;
   if (!Number.isFinite(amount) || amount <= 0) return { reply: { text: 'Nominal harus angka > 0.', private: true } };
-  await GroupModel.updateOne({ _id: group._id }, { $set: { kas: { amount, period, treasurerId } } });
+  const recipients =
+    typeof cmd.options.penerima === 'string'
+      ? cmd.options.penerima.split(',').map((r) => r.trim().slice(0, 80)).filter(Boolean).slice(0, 5)
+      : (group.kas?.recipients ?? []);
+  // Set per field: jangan menghapus pengaturan kas lain yang tidak disebut.
+  await GroupModel.updateOne({ _id: group._id }, { $set: { 'kas.amount': amount, 'kas.period': period, 'kas.treasurerId': treasurerId, 'kas.recipients': recipients } });
   return {
     reply: {
       card: {
@@ -261,6 +275,7 @@ export async function kasAtur(cmd: CommandInvocation): Promise<Reply> {
           { name: 'Iuran', value: `${rupiah(amount)} / ${period === 'bulanan' ? 'bulan' : 'minggu'}`, inline: true },
           { name: 'Bendahara', value: treasurerId ? mention({ platformUserId: treasurerId }) : '—', inline: true },
           { name: 'Channel bukti', value: group.kasChannelId ? channelRef(group.kasChannelId) : 'belum diatur di /setup', inline: true },
+          { name: 'Rekening tujuan', value: recipients.length ? recipients.join(', ') : 'belum diatur — tambahkan opsi `penerima` agar bukti ke rekening lain ditandai', inline: false },
         ],
         footer: 'Kirim foto bukti transfer di channel kas. Bot hanya mencatat — uang tidak dipegang bot.',
       },

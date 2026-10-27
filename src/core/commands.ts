@@ -59,6 +59,7 @@ export const COMMANDS: CommandSpec[] = [
           { name: 'nominal', description: 'Iuran per periode (rupiah)', type: 'integer', required: true },
           { name: 'periode', description: 'Periode iuran', type: 'string', required: true, choices: [{ name: 'mingguan', value: 'mingguan' }, { name: 'bulanan', value: 'bulanan' }] },
           { name: 'bendahara', description: 'Bendahara kelas', type: 'user' },
+          { name: 'penerima', description: 'Nama rekening/e-wallet tujuan kas, pisahkan koma (untuk cek bukti)', type: 'string' },
         ],
       },
       { name: 'rekap', description: 'Siapa sudah/belum bayar periode ini', options: [{ name: 'umumkan', description: 'Tampilkan ke semua (bendahara)', type: 'boolean' }] },

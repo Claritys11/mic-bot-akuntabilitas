@@ -209,7 +209,7 @@ async function finish(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessa
   });
   await GroupModel.updateOne(
     { _id: g._id },
-    { $set: { kas: { amount: d.kasAmount ?? 0, period: (d.kasPeriod ?? 'bulanan') as KasPeriod, treasurerId: d.treasurerId ?? null } } },
+    { $set: { 'kas.amount': d.kasAmount ?? 0, 'kas.period': (d.kasPeriod ?? 'bulanan') as KasPeriod, 'kas.treasurerId': d.treasurerId ?? null } },
   );
   if (ops.listMembers) await upsertMembers(await ops.listMembers(o.groupId)).catch(() => undefined);
   await OnboardingModel.deleteOne({ _id: o._id });

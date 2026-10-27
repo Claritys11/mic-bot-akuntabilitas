@@ -1,15 +1,33 @@
 // Filter murah sebelum LLM (prinsip "Hemat LLM"). Hanya pesan yang lolos yang dikirim ke LLM.
 
-const OWNER_RE = /\b(aku|saya|gue|gw|gua|aq|ak|tak|kula)\s+(yang|yg|aja|ajah|deh)\b|\bbiar\s+(aku|saya|gue|gw)\b|\bnanti\s+(aku|saya|gue|gw)\b|\b(siap|oke|ok)\s+(aku|saya|gue|gw)\b/i;
-const COMMIT_RE = /\b(jadi|deadline|dl|besok|lusa|nanti|ntar|minggu\s+depan|tgl|tanggal|senin|selasa|rabu|kamis|jum'?at|sabtu|minggu|ahad|selesai|kelar|beres|kumpul|transfer|bayar)\b|\b\d{1,2}[/-]\d{1,2}\b/i;
+// Kata ganti orang pertama (Indonesia, slang, Jawa). "tak"/"ku" hanya dihitung bila langsung diikuti
+// kata kerja ("tak garapne", "ku kerjain") — "tak bisa" / "tak tahu" berarti "tidak".
+const PRON = String.raw`(?:aku|saya|sy|gue|gw|gua|aq|ak|ane|kula)`;
+const VERB = String.raw`(?:bikin\w*|buat\w*|kerja\w*|garap\w*|handle|urus\w*|ambil|pegang|kirim\w*|print|ngeprint|cetak|rangkum\w*|beli\w*|bawa\w*|siap(?:in|kan)|beres(?:in)?|selesai(?:in|kan)|hubungi|kumpul(?:in|kan)|presentasi\w*|n?gawe|damel|tulis\w*|ketik\w*|edit\w*|desain\w*|rekap\w*|catat\w*|transfer\w*|bayar\w*|jemput\w*|pinjam\w*|pinjem\w*|cek\w*|tanya\w*|bantu\w*|fotokopi\w*|upload\w*|share\w*)`;
+const OWNER_RE = new RegExp(
+  [
+    String.raw`\b${PRON}\s+(?:yang|yg|sing|ingkang|aja|ajah|deh)\b`, // aku yang / sy yg / aku sing
+    String.raw`\bbiar\s+${PRON}\b`, // biar aku
+    String.raw`\b(?:nanti|ntar|ntr|mengko|sesuk|besok)\s+(?:${PRON}|tak|ku)\b`, // nanti tak kirim
+    String.raw`\b(?:siap|oke|okee|ok|sip|yaudah|yowes)\W+${PRON}\b`, // siap, aku …
+    String.raw`\b(?:${PRON}\s+|tak\s+|ku\s?)${VERB}\b`, // aku handle / tak garapne / kukerjain
+  ].join('|'),
+  'i',
+);
+const COMMIT_RE =
+  /\b(jadi|deadline|dl|besok|lusa|nanti|ntar|mengko|sesuk|bengi|sekarang|maks|minggu\s+depan|malam\s+ini|tgl|tanggal|jam\s*\d|senin|selasa|rabu|kamis|jum'?at|sabtu|minggu|ahad|selesai|kelar|beres|kumpul|transfer|bayar)\b|\b\d{1,2}[/-]\d{1,2}\b/i;
+// Cerita lampau ("kemarin aku yang bikin ppt") bukan janji — kecuali ada penanda waktu ke depan juga.
+const PAST_RE = /\b(kemarin|kemaren|kmrn|tadi|barusan|wingi|(?:minggu|bulan|tahun)\s+lalu)\b/i;
+const FUTURE_RE = /\b(besok|lusa|nanti|ntar|mengko|sesuk|minggu\s+depan|malam\s+ini|jam\s*\d)\b/i;
 const KAS_RE = /\b(transfer|tf|bayar|kas|iuran|lunas)\b/i;
 
-/** Kalimat yang mungkin janji: ada penanda pemilik ("aku yang") atau penanda waktu + kata kerja tugas. */
+/** Kalimat yang mungkin janji: ada penanda pemilik ("aku yang", "tak garapne") + penanda waktu/tugas. */
 export function looksLikePromise(text: string): boolean {
   if (!text || text.length < 6 || text.length > 500) return false;
+  if (PAST_RE.test(text) && !FUTURE_RE.test(text)) return false;
   if (OWNER_RE.test(text)) return COMMIT_RE.test(text) || text.split(/\s+/).length >= 4;
   // "@budi yang bikin poster, Jumat" — penugasan ke orang lain
-  return /@\S+\s+(yang|yg)\b/i.test(text) && COMMIT_RE.test(text);
+  return /@\S+\s+(yang|yg|sing)\b/i.test(text) && COMMIT_RE.test(text);
 }
 
 export function looksLikeKas(text: string): boolean {

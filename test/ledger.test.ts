@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { balance, paidStatus, periodKey, periodLabel, periodRange, reversalOf, toCsv } from '../src/core/kas/ledger.ts';
-import { verifyProof } from '../src/core/kas/verify.ts';
+import { recipientMatches, verifyProof } from '../src/core/kas/verify.ts';
 import type { LedgerEntry } from '../src/core/kas/ledger.ts';
 
 const d = (s: string) => new Date(s);
@@ -122,6 +122,37 @@ describe('verifikasi bukti transfer (realistis, bukan forensik)', () => {
     expect(verifyProof({ ...base, tanggal: '2026-08-01' }, ctx)).toContain('date_out_of_period');
     expect(verifyProof({ ...base, tanggal: '2026-10-25' }, ctx)).toContain('date_in_future');
     expect(verifyProof({ ...base, tanggal: null }, ctx)).toContain('date_unreadable');
+  });
+
+  test('gambar mirip (screenshot ulang) ditandai terpisah dari duplikat persis', () => {
+    const p = { ...base, imagePHash: 'ffff0000ffff0000' };
+    expect(verifyProof(p, { ...ctx, seenPHashes: ['ffff0000ffff0001'] })).toContain('similar_image');
+    expect(verifyProof(p, { ...ctx, seenPHashes: ['0000ffff0000ffff'] })).toEqual([]);
+    expect(verifyProof(p, { ...ctx, seenHashes: new Set(['h1']), seenPHashes: ['ffff0000ffff0000'] })).toEqual(['duplicate_image']);
+  });
+
+  test('penerima dicek hanya kalau rekening kas sudah diatur', () => {
+    const p = { ...base, penerima: 'BUDI SANTOSO' };
+    expect(verifyProof(p, ctx)).toEqual([]);
+    expect(verifyProof(p, { ...ctx, recipients: ['Sari Dewi'] })).toContain('recipient_mismatch');
+    expect(verifyProof({ ...p, penerima: 'SARI D***' }, { ...ctx, recipients: ['Sari Dewi'] })).toEqual([]);
+    expect(verifyProof({ ...p, penerima: null }, { ...ctx, recipients: ['Sari Dewi'] })).toContain('recipient_unreadable');
+  });
+});
+
+describe('cocokkan nama penerima', () => {
+  test.each([
+    ['SARI DEWI', 'Sari Dewi', true],
+    ['SARI D***', 'Sari Dewi Lestari', true],
+    ['S*** DEWI', 'Sari Dewi', true],
+    ['DANA - SARI DEWI', 'Sari Dewi', true],
+    ['SARI', 'Sari', true],
+    ['SARI', 'Sari Dewi', false], // satu kata saja tidak cukup untuk nama dua kata
+    ['D***', 'Dewi', false],
+    ['BUDI SANTOSO', 'Sari Dewi', false],
+    ['SARI PUTRI', 'Sari Dewi', false],
+  ])('%p vs %p → %p', (x, e, want) => {
+    expect(recipientMatches(x, e)).toBe(want);
   });
 });
 
