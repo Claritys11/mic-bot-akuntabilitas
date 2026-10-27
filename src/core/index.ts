@@ -62,6 +62,8 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     if (!(existing ? can(existing, cmd, 'kelola') : cmd.isAdmin)) return fail('Hanya ketua kelas atau admin server yang bisa menjalankan /setup.');
     // Tanpa opsi → wawancara santai di channel ini (cara utama); dengan opsi → cara cepat.
     if (!cmd.options.kelas) {
+      // Wawancara ulang menyetel ulang bendahara & tim inti kas → hanya admin (pemisahan tugas; tombol mulai juga admin-only).
+      if (!cmd.isAdmin) return fail('Wawancara setup ulang hanya bisa dijalankan admin server, karena ikut mengatur ulang bendahara. Ketua bisa ubah profil kelas lewat `/setup kelas:…`.');
       const configured = Boolean(existing);
       return { reply: { text: 'Oke, aku mulai wawancaranya di channel ini ya 👇', private: true }, messages: await startOnboarding(cmd.platform, cmd.groupId, cmd.channelId, configured) };
     }
