@@ -5,6 +5,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Bendahara bisa orang (DM) atau channel `#tim-inti` (dicari, dibuatkan privat kalau belum ada); tim inti eksplisit (`tambah_tim`/`hapus_tim`).
+- Bot menindaklanjuti: pengingat pribadi/kelas (`@MIC ingetin …`, `/ingetin`), tanya ulang janji yang belum dijawab, tanya kabar sehari setelah lewat deadline, rangkuman Senin pagi.
+- Data lomba otomatis: baca link (`@MIC ada lomba nih …`, `/lomba tambah link:`) → draf untuk pengurus; feed RSS harian; ambil halaman aman SSRF.
+- `/bantuan` di Discord & WhatsApp, "@MIC bisa apa aja?".
 - Janji jelas (LLM yakin, pemilik sendiri, ada deadline) langsung aktif; salah tangkap → balas "bukan" / tombol "Bukan janjiku"; yang belum diakui tidak pernah diumumkan ke grup.
 - Rem darurat `/pilot mode jeda` dan penghapusan data `/data hapus-saya|hapus-anggota|hapus-kelas`.
 - Mode diam untuk baseline pilot + `/pilot ekspor` dengan kolom cek ketua.
