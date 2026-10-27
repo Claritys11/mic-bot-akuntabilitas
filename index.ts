@@ -7,6 +7,7 @@ import { seedOpportunities } from './src/core/opps/service.ts';
 import { Clock, now, setClock } from './src/core/time.ts';
 import type { Platform, Sender } from './src/core/types.ts';
 import { connectDb, disconnectDb } from './src/db/connect.ts';
+import { recordLlmCall } from './src/db/llmUsage.ts';
 import { OpenRouterProvider } from './src/llm/openrouter.ts';
 import { startScheduler } from './src/scheduler/index.ts';
 
@@ -23,6 +24,7 @@ const seeded = await seedOpportunities(now());
 if (seeded) console.log(`[db] seed ${seeded} info lomba`);
 
 const llm = OpenRouterProvider.fromConfig(config);
+llm.onCall((r) => recordLlmCall(r));
 console.log(`[llm] ${llm.enabled ? `aktif → ${config.llm.text.baseUrl} (${config.llm.text.model})` : 'nonaktif — deteksi janji pakai heuristik'}`);
 
 const core = createCore(llm);

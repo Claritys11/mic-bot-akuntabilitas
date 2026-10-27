@@ -19,6 +19,16 @@ export interface LLMUsage {
   completionTokens: number;
 }
 
+/** Satu panggilan LLM yang berhasil — untuk log biaya (tanpa isi pesan). */
+export interface LLMCallRecord {
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  /** Biaya dari OpenRouter (USD); null kalau endpoint tidak melaporkan. */
+  costUsd: number | null;
+  ms: number;
+}
+
 export interface LLMProvider {
   readonly enabled: boolean;
   chat(messages: ChatMessage[], opts?: ChatOptions): Promise<string>;

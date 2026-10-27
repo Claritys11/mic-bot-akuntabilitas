@@ -239,3 +239,18 @@ WaPromptSchema.index({ chatId: 1, createdAt: -1 });
 WaPromptSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 3600 });
 export const WaPromptModel = mongoose.model('WaPrompt', WaPromptSchema);
 export type WaPromptDoc = InferSchemaType<typeof WaPromptSchema> & { _id: mongoose.Types.ObjectId };
+
+// ---------- Biaya LLM (ringkasan harian, tanpa isi pesan) ----------
+const LlmUsageSchema = new Schema({
+  day: { type: String, required: true }, // YYYY-MM-DD (WIB)
+  model: { type: String, required: true },
+  calls: { type: Number, default: 0 },
+  promptTokens: { type: Number, default: 0 },
+  completionTokens: { type: Number, default: 0 },
+  costUsd: { type: Number, default: 0 },
+  /** Panggilan yang tidak melaporkan biaya (endpoint non-OpenRouter). */
+  unpricedCalls: { type: Number, default: 0 },
+  totalMs: { type: Number, default: 0 },
+});
+LlmUsageSchema.index({ day: 1, model: 1 }, { unique: true });
+export const LlmUsageModel = mongoose.model('LlmUsage', LlmUsageSchema);

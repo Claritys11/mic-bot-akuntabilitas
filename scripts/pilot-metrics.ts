@@ -3,7 +3,7 @@
 import { loadConfig } from '../src/config.ts';
 import { pilotMetrics } from '../src/core/pilot/metrics.ts';
 import { connectDb, disconnectDb } from '../src/db/connect.ts';
-import { GroupModel, KasProofModel, PromiseModel } from '../src/db/models.ts';
+import { GroupModel, KasProofModel, LlmUsageModel, PromiseModel } from '../src/db/models.ts';
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(name);
@@ -32,5 +32,21 @@ for (const g of groups) {
   console.log(`  ditepati tepat waktu: ${m.keptPct ?? '—'}% · rata-rata telat: ${m.avgDaysLate ?? '—'} hari · ditanya tapi tak dikonfirmasi: ${m.neverConfirmed}`);
   console.log(`  auto-aktif ${m.autoActivated} · salah-aktif ${m.falseActivations} (${m.falseActivationPct ?? '—'}%)`);
   console.log(`  kas: disetujui ${m.kas.approved} (Rp${m.kas.approvedTotal.toLocaleString('id-ID')}) · ditolak ${m.kas.rejected} · ditandai ${m.kas.flagged} · menunggu ${m.kas.pending}`);
+}
+// Biaya LLM nyata (dari OpenRouter) untuk slide model bisnis.
+const dayKey = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+const usage = await LlmUsageModel.find({ day: { $gte: dayKey(from), $lte: dayKey(now) } }).lean();
+if (usage.length) {
+  const days = new Set(usage.map((u) => u.day)).size;
+  const sum = usage.reduce(
+    (a, u) => ({ calls: a.calls + u.calls, cost: a.cost + u.costUsd, ms: a.ms + u.totalMs, unpriced: a.unpriced + u.unpricedCalls }),
+    { calls: 0, cost: 0, ms: 0, unpriced: 0 },
+  );
+  const active = Math.max(1, groups.length);
+  const perClassMonth = (sum.cost / days / active) * 30;
+  console.log(`\nBiaya LLM (${days} hari tercatat, ${groups.length} kelas)`);
+  console.log(`  ${sum.calls} panggilan · rata-rata ${Math.round(sum.ms / sum.calls)} ms · total $${sum.cost.toFixed(4)}${sum.unpriced ? ` (+${sum.unpriced} panggilan tanpa data biaya)` : ''}`);
+  console.log(`  ≈ $${perClassMonth.toFixed(3)} per kelas per bulan (≈ Rp${Math.round(perClassMonth * 16500).toLocaleString('id-ID')} dengan kurs Rp16.500)`);
+  for (const u of usage.sort((a, b) => a.day.localeCompare(b.day))) console.log(`  ${u.day} ${u.model}: ${u.calls} panggilan, $${u.costUsd.toFixed(4)}`);
 }
 await disconnectDb();

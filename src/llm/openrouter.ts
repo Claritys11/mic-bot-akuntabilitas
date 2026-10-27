@@ -1,5 +1,5 @@
 import type { Config, LLMEndpoint } from '../config.ts';
-import type { ChatMessage, ChatOptions, LLMProvider, LLMUsage } from './provider.ts';
+import type { ChatMessage, ChatOptions, LLMCallRecord, LLMProvider, LLMUsage } from './provider.ts';
 
 // Klien OpenAI-compatible. Default ke OpenRouter, tapi juga dipakai untuk API server
 // Hermes Agent (profil terpisah) — cukup ganti LLM_BASE_URL.
@@ -9,7 +9,7 @@ type WireMessage = { role: string; content: string | ContentPart[] };
 
 interface CompletionResponse {
   choices?: { message?: { content?: string | null } }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
   error?: { message?: string };
 }
 
@@ -38,6 +38,13 @@ export class OpenRouterProvider implements LLMProvider {
     private readonly dataCollection: 'allow' | 'deny' = 'deny',
   ) {
     this.enabled = Boolean(text.apiKey);
+  }
+
+  private usageSink?: (r: LLMCallRecord) => void;
+
+  /** Terima catatan tiap panggilan (dipakai untuk log biaya harian; isi pesan tidak ikut). */
+  onCall(sink: (r: LLMCallRecord) => void): void {
+    this.usageSink = sink;
   }
 
   /** model|key → waktu (ms) sampai boleh dicoba lagi. */
@@ -113,7 +120,9 @@ export class OpenRouterProvider implements LLMProvider {
     // Field khusus OpenRouter; endpoint lain (Hermes lokal) tidak dikirimi.
     if (new URL(ep.baseUrl).hostname.endsWith('openrouter.ai')) {
       body.provider = { ...(this.providerSort ? { sort: this.providerSort } : {}), ...(this.dataCollection === 'deny' ? { data_collection: 'deny' } : {}) };
+      body.usage = { include: true }; // minta biaya per panggilan (usage.cost)
     }
+    const started = Date.now();
 
     const res = await fetch(`${ep.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
@@ -132,6 +141,17 @@ export class OpenRouterProvider implements LLMProvider {
     this.stats.calls += 1;
     this.stats.promptTokens += data.usage?.prompt_tokens ?? 0;
     this.stats.completionTokens += data.usage?.completion_tokens ?? 0;
+    try {
+      this.usageSink?.({
+        model,
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        costUsd: typeof data.usage?.cost === 'number' ? data.usage.cost : null,
+        ms: Date.now() - started,
+      });
+    } catch {
+      // log biaya tidak boleh menggagalkan jawaban
+    }
 
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error('LLM mengembalikan respons kosong');
