@@ -72,6 +72,26 @@ const CONFIRMED: Record<SpeechLevel, Record<Tone, readonly ConfirmFn[]>> = {
   },
 };
 
+// Janji yang langsung dicatat (auto-aktif): beri tahu & beri jalan keluar mudah kalau salah tangkap.
+type AutoFn = (who: string) => string;
+const AUTO: Record<SpeechLevel, Record<Tone, readonly AutoFn[]>> = {
+  santai: {
+    ceria: [
+      (who) => `siap ${who}, udah ku catat ✍️ nanti ku colek sebelum deadline. salah tangkap? balas pesan ini "bukan"`,
+      (who) => `noted ${who} 🔥 ku catat ya, nanti ku ingetin. kalau bukan janji, balas "bukan" aja`,
+    ],
+    netral: [(who) => `oke ${who}, ku catat. nanti ku ingetin sebelum deadline. kalau bukan janji, balas pesan ini "bukan"`],
+  },
+  sopan: {
+    ceria: [(who) => `Baik ${who}, sudah saya catat 🙂 Nanti saya ingatkan menjelang deadline. Kalau bukan janji, balas pesan ini "bukan".`],
+    netral: [(who) => `Baik ${who}, sudah saya catat. Nanti saya ingatkan menjelang deadline. Kalau bukan janji, balas pesan ini "bukan".`],
+  },
+  krama: {
+    ceria: [(who) => `Sendika ${who}, sampun kula cathet 🙏 Mangke kula engetaken. Menawi sanes janji, mangga bales "bukan".`],
+    netral: [(who) => `Sendika ${who}, sampun kula cathet. Mangke kula engetaken. Menawi sanes janji, mangga bales "bukan".`],
+  },
+};
+
 const CANCELLED: Record<SpeechLevel, Record<Tone, readonly string[]>> = {
   santai: { ceria: ['oke deh, ga jadi ku catat 👌', 'siap, anggap aja aku salah denger hehe 🙈'], netral: ['oke, ga ku catat'] },
   sopan: { ceria: ['Baik, tidak saya catat 👌'], netral: ['Baik, tidak saya catat.'] },
@@ -93,16 +113,17 @@ const DONE: Record<SpeechLevel, Record<Tone, { onTime: string; late: string }>> 
   },
 };
 
-export const LABELS: Record<SpeechLevel, { confirm: string; edit: string; cancel: string; done: string }> = {
-  santai: { confirm: '✅ Jadi, catat!', edit: '✏️ Ubah', cancel: '❌ Ga jadi', done: '✅ Udah kelar' },
-  sopan: { confirm: '✅ Ya, catat', edit: '✏️ Ubah', cancel: '❌ Bukan janji', done: '✅ Sudah selesai' },
-  krama: { confirm: '✅ Inggih, cathet', edit: '✏️ Ubah', cancel: '❌ Sanes janji', done: '✅ Sampun rampung' },
+export const LABELS: Record<SpeechLevel, { confirm: string; edit: string; cancel: string; done: string; notMine: string }> = {
+  santai: { confirm: '✅ Jadi, catat!', edit: '✏️ Ubah', cancel: '❌ Ga jadi', done: '✅ Udah kelar', notMine: '❌ Bukan janjiku' },
+  sopan: { confirm: '✅ Ya, catat', edit: '✏️ Ubah', cancel: '❌ Bukan janji', done: '✅ Sudah selesai', notMine: '❌ Bukan janji saya' },
+  krama: { confirm: '✅ Inggih, cathet', edit: '✏️ Ubah', cancel: '❌ Sanes janji', done: '✅ Sampun rampung', notMine: '❌ Sanes janji kula' },
 };
 
 export const askLine = (level: SpeechLevel, who: string, task: string, mood: Mood = 'santai', pick: Pick = Math.random) =>
   choose(ASK[level][toneOf(mood)], pick)(who, task);
 export const confirmedLine = (level: SpeechLevel, who: string, hasDeadline: boolean, mood: Mood = 'santai', pick: Pick = Math.random) =>
   choose(CONFIRMED[level][toneOf(mood)], pick)(who, hasDeadline);
+export const autoLine = (level: SpeechLevel, who: string, mood: Mood = 'santai', pick: Pick = Math.random) => choose(AUTO[level][toneOf(mood)], pick)(who);
 export const cancelledLine = (level: SpeechLevel, mood: Mood = 'santai', pick: Pick = Math.random) => choose(CANCELLED[level][toneOf(mood)], pick);
 export const doneLine = (level: SpeechLevel, late: boolean, mood: Mood = 'santai') => DONE[level][toneOf(mood)][late ? 'late' : 'onTime'];
 

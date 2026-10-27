@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { typedAnswer } from '../src/core/promises/service.ts';
-import { acceptLlmLine, askLine, cancelledLine, confirmedLine, LABELS } from '../src/core/promises/voice.ts';
+import { acceptLlmLine, askLine, autoLine, cancelledLine, confirmedLine, LABELS } from '../src/core/promises/voice.ts';
 
 const WHO = '{{@u1}}';
 const LAUGH = /haha|hehe|wkwk|😆|👀|🔥|🙈/i;
@@ -26,6 +26,7 @@ describe('suara bot saat nimbrung janji', () => {
           expect(askLine(level, WHO, 'bikin PPT', mood, () => i / 4)).not.toMatch(LAUGH);
           expect(confirmedLine(level, WHO, true, mood, () => i / 4)).not.toMatch(LAUGH);
           expect(cancelledLine(level, mood, () => i / 4)).not.toMatch(LAUGH);
+          expect(autoLine(level, WHO, mood, () => i / 4)).not.toMatch(LAUGH);
         }
       }
     }

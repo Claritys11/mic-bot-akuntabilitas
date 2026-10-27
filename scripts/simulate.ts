@@ -88,6 +88,8 @@ function printReply(r: Reply) {
   if (r.messages) printOut(r.messages);
 }
 const step = (t: string) => console.log(`\n━━ ${t}  [${formatWIB(clock.now())}]`);
+const hasAction = (out: OutgoingMessage[] | MessageBody | undefined, prefix: string) =>
+  (Array.isArray(out) ? out : out ? [out] : []).flatMap((m) => m.actions ?? []).some((a) => a.id.startsWith(prefix));
 const actionOf = (out: OutgoingMessage[] | MessageBody | undefined, label: string) => {
   const list = Array.isArray(out) ? out : out ? [out] : [];
   const a = list.flatMap((m) => m.actions ?? []).find((x) => x.label.includes(label) || x.id.startsWith(label));
@@ -131,10 +133,20 @@ printOut(await core.onMessage(say(budi, 'wkwk iya bener')));
 step('Ani: "aku yang bikin PPT ya, Jumat jadi"');
 const det = await core.onMessage(say(ani, 'aku yang bikin PPT ya, Jumat jadi'));
 printOut(det);
-step('Budi coba konfirmasi janji Ani (harus ditolak)');
-printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
-step('Ani klik ✅ Konfirmasi');
-printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
+if (hasAction(det, 'p:ok:')) {
+  step('Budi coba konfirmasi janji Ani (harus ditolak)');
+  printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
+  step('Ani klik ✅ Konfirmasi');
+  printReply(await core.onAction({ ...ctx(ani), actionId: actionOf(det, 'p:ok:'), messageId: 'bot1' }));
+} else {
+  // Dengan LLM: janji jelas + ada deadline langsung aktif (auto-aktif).
+  step('Janji langsung aktif → Budi coba klik "Bukan janji" milik Ani (harus ditolak)');
+  printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det, 'p:no:'), messageId: 'bot1' }));
+  step('Ketua: "aku yang bawa proyektor besok" → auto-aktif, lalu Ketua balas bot "bukan" → batal');
+  const auto2 = await core.onMessage(say(ketua, 'aku yang bawa proyektor besok'));
+  printOut(auto2);
+  if (!hasAction(auto2, 'p:ok:')) printOut(await core.onMessage({ ...say(ketua, 'bukan'), mentionsBot: true }));
+}
 
 step('Sari: "aku yang beli kertas HVS" → bot tanya, Sari jawab ketik "jadi dong, besok"');
 printOut(await core.onMessage(say(sari, 'aku yang beli kertas HVS ya')));
@@ -164,7 +176,7 @@ printOut(det2);
 const edit = await core.onAction({ ...ctx(budi), actionId: actionOf(det2, 'Ubah'), messageId: 'bot3' });
 printReply(edit);
 printReply(await core.onForm({ ...ctx(budi), formId: edit.form!.id, values: { task: 'print & jilid laporan', deadline: 'senin jam 7 pagi' } }));
-printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det2, 'p:ok:'), messageId: 'bot3' }));
+if (hasAction(det2, 'p:ok:')) printReply(await core.onAction({ ...ctx(budi), actionId: actionOf(det2, 'p:ok:'), messageId: 'bot3' }));
 step('/janji list');
 printReply(await core.onCommand({ ...ctx(ani), name: 'janji.list', options: {} }));
 step('/rapor-kelas');

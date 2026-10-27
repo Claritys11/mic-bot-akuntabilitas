@@ -26,7 +26,8 @@ import { asTranscript, recentChat } from '../chat/context.ts';
 import { detectMood, graverMood, type Mood } from '../chat/mood.ts';
 import { parseRelativeDate } from './dateParser.ts';
 import { heuristicExtract, looksLikePromise, type Extraction } from './prefilter.ts';
-import { acceptLlmLine, askLine, cancelledLine, confirmedLine, doneLine, LABELS } from './voice.ts';
+import { shouldAutoActivate, similarTask } from './autoActivate.ts';
+import { acceptLlmLine, askLine, autoLine, cancelledLine, confirmedLine, doneLine, LABELS } from './voice.ts';
 
 const ExtractionSchema = z.object({
   isPromise: z.boolean(),
@@ -166,13 +167,19 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
   const at = now();
   const deadline = resolveDeadline(result.ex.deadlineText, at) ?? resolveDeadline(msg.text, at);
 
-  const dup = await PromiseModel.exists({
-    groupId: msg.groupId,
-    'owner.platformUserId': owner.platformUserId,
-    task: result.ex.task.trim(),
-    status: { $in: ['pending_confirm', 'active'] },
+  // Janji yang diulang ("iya aku yang bikin PPT kok") tidak dicatat dua kali.
+  const open = await PromiseModel.find(
+    { groupId: msg.groupId, 'owner.platformUserId': owner.platformUserId, status: { $in: ['pending_confirm', 'active', 'overdue'] }, createdAt: { $gte: new Date(at.getTime() - 14 * 86400_000) } },
+    { task: 1 },
+  ).lean();
+  if (open.some((o) => similarTask(o.task, result.ex.task))) return [];
+
+  const auto = shouldAutoActivate({
+    source: result.source,
+    confidence: result.ex.confidence,
+    ownerIsAuthor: owner.platformUserId === msg.author.platformUserId,
+    hasDeadline: Boolean(deadline),
   });
-  if (dup) return [];
 
   const p = await PromiseModel.create({
     platform: msg.platform,
@@ -185,9 +192,19 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
     deadline,
     deadlineText: result.ex.deadlineText ?? null,
     source: result.source,
+    ...(auto ? { status: 'active', confirmedAt: at, stage: initialStage(deadline!, at), autoActivated: true } : {}),
   });
   const doc = p.toObject() as PromiseDoc;
   const id = String(doc._id);
+  if (auto) {
+    return [
+      {
+        to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
+        text: `${autoLine(level, mention(owner), result.mood)}\n${detailLine(doc)}`,
+        actions: [...activeActions(id, level), { id: ids.cancel(id), label: LABELS[level].notMine, kind: 'secondary' }],
+      },
+    ];
+  }
   return [
     {
       to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
@@ -200,7 +217,7 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
 
 // Jawaban ketik untuk pertanyaan "jadi gak?" — orang sering membalas "jadi dong" alih-alih klik tombol.
 const YES = /^(?:jadi|iya+|iy|ya+|yoi|yup|yes|ok(?:e+|ay)?|siap|sip|gas(?:s|keun)?|bener|beneran|betul|aman|fix|pasti|inggih|nggih|leres)\b/i;
-const NO = /^(?:(?:ga|gak|nggak|ngga|enggak|engga|g|tidak|ora)\s*jadi|batal|ga|gak|nggak|ngga|enggak|engga|tidak|nope|bercanda|canda|skip|mboten|ora)\b/i;
+const NO = /^(?:(?:ga|gak|nggak|ngga|enggak|engga|g|tidak|ora)\s*jadi|bukan(?:\s+janji\w*)?|salah\s+tangkap|batal|ga|gak|nggak|ngga|enggak|engga|tidak|nope|bercanda|canda|skip|mboten|ora)\b/i;
 const TYPED_REPLY_WINDOW_MS = 15 * 60_000;
 /** Membalas (reply) pesan bot boleh lebih lama dari jendela biasa. */
 const TYPED_REPLY_WINDOW_TAGGED_MS = 60 * 60_000;
@@ -233,7 +250,7 @@ export async function handleTypedConfirmation(msg: IncomingMessage, group: Group
   })
     .sort({ createdAt: -1 })
     .lean<PromiseDoc>();
-  if (!p) return null;
+  if (!p) return handleTypedOnAuto(msg, group, answer);
 
   const level = group.speechLevel as SpeechLevel;
   const recent = await recentChat(msg.groupId, msg.channelId, msg.timestamp, 8);
@@ -254,6 +271,35 @@ export async function handleTypedConfirmation(msg: IncomingMessage, group: Group
   ).lean<PromiseDoc>();
   if (!updated) return null;
   return [{ to, text: `${confirmedLine(level, mention(p.owner), !!deadline, mood)}\n${detailLine(updated)}`, actions: activeActions(id, level) }];
+}
+
+/**
+ * Balasan ke pesan bot untuk janji yang auto-aktif: "bukan" → batal, "iya" → pemilik sudah mengakui
+ * (ownerTouched, tagihan boleh diumumkan seperti biasa). Hanya kalau membalas/men-tag bot, supaya
+ * kata "bukan" di obrolan biasa tidak membatalkan janji.
+ */
+async function handleTypedOnAuto(msg: IncomingMessage, group: GroupDoc, answer: 'yes' | 'no'): Promise<OutgoingMessage[] | null> {
+  if (!msg.mentionsBot) return null;
+  const p = await PromiseModel.findOne({
+    groupId: msg.groupId,
+    channelId: msg.channelId,
+    'owner.platformUserId': msg.author.platformUserId,
+    status: 'active',
+    autoActivated: true,
+    ownerTouched: false,
+    createdAt: { $gte: new Date(Date.now() - TYPED_REPLY_WINDOW_TAGGED_MS) },
+  })
+    .sort({ createdAt: -1 })
+    .lean<PromiseDoc>();
+  if (!p) return null;
+  if (answer === 'yes') {
+    await PromiseModel.updateOne({ _id: p._id }, { $set: { ownerTouched: true } });
+    return [];
+  }
+  const done = await PromiseModel.findOneAndUpdate({ _id: p._id, status: 'active', ownerTouched: false }, { $set: { status: 'cancelled' } });
+  if (!done) return null;
+  const mood = detectMood([msg.text]);
+  return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: `${cancelledLine(group.speechLevel as SpeechLevel, mood)}\n~~${p.task}~~` }];
 }
 
 /** Buat janji langsung (dipakai fitur lain, mis. "Bentuk tim"). Tetap perlu dikonfirmasi. */
@@ -297,13 +343,14 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
     if (p.status === 'done') return deny('Janji ini sudah ditandai selesai 👍');
     if (p.status === 'cancelled' || p.status === 'pending_confirm') return deny('Janji ini tidak aktif.');
     const doneAt = now();
-    const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'done', doneAt } }, { returnDocument: 'after' }).lean<PromiseDoc>();
+    const updated = await PromiseModel.findByIdAndUpdate(id, { $set: { status: 'done', doneAt, ownerTouched: true } }, { returnDocument: 'after' }).lean<PromiseDoc>();
     const late = !!p.deadline && doneAt > p.deadline;
     const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
     return {
       update: { text: `${doneLine(level, late, mood)}\n${detailLine(updated!)}`, card: undefined, actions: [] },
       messages:
-        p.status === 'overdue'
+        // Lewat deadline yang diumumkan ke grup → kabari grup juga saat selesai (auto-aktif yang belum diakui tidak pernah diumumkan).
+        p.status === 'overdue' && !(p.autoActivated && !p.ownerTouched)
           ? [{ to: { kind: 'channel', channelId: p.channelId }, text: `Kabar baik: **${p.task}** dari ${mention(p.owner)} sudah selesai. Terima kasih 🙏` }]
           : [],
     };
@@ -313,9 +360,17 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
 
   if (verb === 'edit') return { form: editForm(p) };
 
+  const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
+  // "Bukan janjiku" untuk janji auto-aktif yang belum pernah diakui pemiliknya (juga dari DM pengingat).
+  if ((verb === 'cancel' || verb === 'no') && p.autoActivated && !p.ownerTouched && (p.status === 'active' || p.status === 'overdue')) {
+    if (p.owner.platformUserId !== ev.actor.platformUserId && !ev.isAdmin) return deny(`Hanya ${p.owner.displayName} yang bisa bilang ini bukan janjinya.`);
+    const done = await PromiseModel.findOneAndUpdate({ _id: id, ownerTouched: false, status: { $in: ['active', 'overdue'] } }, { $set: { status: 'cancelled' } });
+    if (!done) return deny('Janji ini sudah diproses sebelumnya.');
+    return { update: { text: `${cancelledLine(level, mood)}\n~~${p.task}~~`, card: undefined, actions: [] } };
+  }
+
   if (p.status !== 'pending_confirm') return deny('Janji ini sudah diproses sebelumnya.');
 
-  const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
   if (verb === 'cancel' || verb === 'no') {
     await PromiseModel.updateOne({ _id: id }, { $set: { status: 'cancelled' } });
     return { update: { text: `${cancelledLine(level, mood)}\n~~${p.task}~~`, card: undefined, actions: [] } };
@@ -382,6 +437,7 @@ export async function handlePromiseForm(ev: FormSubmit): Promise<Reply> {
   if (rawDeadline && !deadline) return deny(`Maaf, aku belum paham deadline "${rawDeadline}". Coba "Jumat jam 19" atau "2026-10-30 19:00".`);
 
   const set: Record<string, unknown> = { task, deadline, deadlineText: rawDeadline || null };
+  if (ev.actor.platformUserId === p.owner.platformUserId) set.ownerTouched = true;
   if (p.status === 'active' || p.status === 'overdue') {
     set.stage = deadline ? initialStage(deadline, at) : 'none';
     set.status = 'active';

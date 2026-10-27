@@ -1,9 +1,10 @@
 import { GroupModel, PromiseModel, type GroupDoc, type PromiseDoc } from '../../db/models.ts';
-import { doneAction, promiseCard } from '../promises/service.ts';
+import { doneAction, ids, promiseCard } from '../promises/service.ts';
+import { LABELS } from '../promises/voice.ts';
 import { formatWIB } from '../time.ts';
 import { mention, type OutgoingMessage, type Platform, type SpeechLevel } from '../types.ts';
 import { nextStage, type Stage } from './escalation.ts';
-import { billingText } from './templates.ts';
+import { billingText, overduePrivateText } from './templates.ts';
 
 const STAGE_TITLE: Record<Stage, string> = {
   h2: '🔔 Pengingat janji (H-2)',
@@ -43,14 +44,18 @@ export async function collectPromiseReminders(at: Date): Promise<OutgoingMessage
     if (!claimed) continue;
 
     const level = levelOf.get(`${p.platform}:${p.groupId}`) ?? 'sopan';
-    const text = billingText(level, stage, { nama: mention(p.owner), tugas: `**${p.task}**`, deadline: formatWIB(p.deadline!) }, `${p._id}:${stage}`);
+    const unconfirmedAuto = Boolean(p.autoActivated && !p.ownerTouched);
+    const vars = { nama: mention(p.owner), tugas: `**${p.task}**`, deadline: formatWIB(p.deadline!) };
+    const text = stage === 'overdue' && unconfirmedAuto ? overduePrivateText(level, vars, String(p._id)) : billingText(level, stage, vars, `${p._id}:${stage}`);
     const card = { ...promiseCard(claimed, STAGE_TITLE[stage], stage === 'overdue' ? 'danger' : stage === 'h0' ? 'warn' : 'info') };
-    const actions = [doneAction(String(p._id), level)];
+    // Janji auto-aktif yang belum pernah diakui pemiliknya: selalu ada jalan keluar "Bukan janjiku",
+    // dan lewat deadline TIDAK diumumkan ke grup — jangan mempermalukan orang atas janji yang mungkin salah tangkap.
+    const actions = [doneAction(String(p._id), level), ...(unconfirmedAuto ? [{ id: ids.cancel(String(p._id)), label: LABELS[level].notMine, kind: 'secondary' as const }] : [])];
     const owner = { platform: p.platform as Platform, platformUserId: p.owner.platformUserId, groupId: p.groupId, displayName: p.owner.displayName };
 
     // H-2/H-1/H-0 secara pribadi (tidak mempermalukan); lewat deadline baru ke grup.
     out.push(
-      stage === 'overdue'
+      stage === 'overdue' && !unconfirmedAuto
         ? { to: { kind: 'channel', channelId: p.channelId }, text, card, actions }
         : { to: { kind: 'dm', member: owner, fallbackChannelId: p.channelId }, text, card, actions },
     );

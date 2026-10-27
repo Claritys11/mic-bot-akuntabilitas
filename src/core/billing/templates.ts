@@ -75,6 +75,23 @@ export const TEMPLATES: Bank = {
   },
 };
 
+// Lewat deadline, tapi lewat chat pribadi (janji auto-aktif yang belum diakui pemiliknya).
+export const OVERDUE_PRIVATE: Record<SpeechLevel, string[]> = {
+  santai: [
+    '{nama}, {tugas} udah lewat deadline ({deadline}). Udah kelar? Pencet tombol di bawah ya. Kalau ternyata itu bukan janjimu, pencet "Bukan janjiku" 🙏',
+  ],
+  sopan: [
+    '{nama}, {tugas} sudah melewati batas waktu ({deadline}). Bila sudah selesai, silakan tekan tombol di bawah. Bila itu bukan janji Anda, tekan "Bukan janji saya" 🙏',
+  ],
+  krama: [
+    'Nuwun sewu {nama}, {tugas} sampun langkung wekdalipun ({deadline}). Menawi sampun rampung, mangga pencet tombol ing ngandhap. Menawi sanes janji panjenengan, pencet "Sanes janji kula" 🙏',
+  ],
+};
+
+export function overduePrivateText(level: SpeechLevel, vars: { nama: string; tugas: string; deadline: string }, seed: string): string {
+  return fill(pick(OVERDUE_PRIVATE[level], seed), vars);
+}
+
 export type KasStage = 'mid' | 'end';
 
 export const KAS_TEMPLATES: Record<SpeechLevel, Record<KasStage, string[]>> = {

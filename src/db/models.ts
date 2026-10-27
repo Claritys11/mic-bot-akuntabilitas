@@ -62,6 +62,10 @@ const PromiseSchema = new Schema(
     source: { type: String, enum: ['llm', 'heuristic', 'manual', 'opportunity'], default: 'llm' },
     confirmedAt: { type: Date, default: null },
     doneAt: { type: Date, default: null },
+    // Langsung aktif tanpa klik konfirmasi. Selama pemilik belum pernah menyentuhnya (ownerTouched),
+    // tagihan lewat deadline hanya lewat DM dan selalu ada tombol "Bukan janjiku".
+    autoActivated: { type: Boolean, default: false },
+    ownerTouched: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

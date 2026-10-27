@@ -237,7 +237,7 @@ async function finish(o: OnboardingDoc, ops: PlatformOps): Promise<OutgoingMessa
     say(
       o.channelId,
       'Cara pakainya gampang, ngobrol biasa aja:\n' +
-        '• Kalau ada yang bilang _"aku yang bikin PPT, Jumat jadi"_, aku tanya dulu itu janji atau bukan, terus aku ingetin pas mau deadline.\n' +
+        '• Kalau ada yang bilang _"aku yang bikin PPT, Jumat jadi"_, aku catat terus aku ingetin pas mau deadline (kalau kurang jelas, aku tanya dulu; salah tangkap? balas aja "bukan").\n' +
         (d.kasAmount ? `• Bayar kas? Kirim foto bukti transfer di ${channelRef(d.kasChannelId ?? o.channelId)}, nanti bendahara tinggal klik setujui.\n` : '') +
         '• Info lomba yang cocok bakal aku share maksimal 2x seminggu.\n' +
         'Slash command (`/janji`, `/kas`, `/rangkum`) tetap ada kalau butuh 😉',
