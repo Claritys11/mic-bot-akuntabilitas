@@ -23,7 +23,7 @@ import {
   type Reply,
   type SpeechLevel,
 } from '../types.ts';
-import { ensureReviewChannel, saveReviewTarget } from './review.ts';
+import { addReviewer, ensureReviewChannel, saveReviewTarget } from './review.ts';
 import { paidStatus, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
 import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
@@ -58,11 +58,11 @@ const refHashOf = (ref: string) => createHash('sha256').update(normalizeRef(ref)
  */
 const SCRUB_AFTER_REVIEW = { sender: null, bank: null, recipient: null, refId: null };
 
-const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string }; channelId?: string }) =>
+/** Admin, bendahara, atau anggota tim inti yang terdaftar eksplisit — bukan "siapa pun yang bisa lihat channel". */
+const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) =>
   ctx.isAdmin ||
   (g.kas?.treasurerId != null && g.kas.treasurerId === ctx.actor.platformUserId) ||
-  // Channel tim inti yang tertutup untuk anggota biasa: yang bisa melihat tombolnya = tim inti.
-  Boolean(g.kas?.reviewChannelPrivate && g.kas.reviewChannelId && g.kas.reviewChannelId === ctx.channelId);
+  Boolean(g.kas?.reviewerIds?.includes(ctx.actor.platformUserId));
 
 /** Gambar di channel kas → ekstraksi vision → verifikasi → tunggu persetujuan bendahara. */
 export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
@@ -200,11 +200,12 @@ function notifyPrivateSender(
 
 async function approve(proofId: string, nominal: number, ev: ActionEvent | FormSubmit, group: GroupDoc): Promise<Reply> {
   const proof = await KasProofModel.findOneAndUpdate(
-    { _id: proofId, groupId: ev.groupId, status: 'pending' },
+    // Bukan bukti milik sendiri (kecuali admin) — berlaku juga lewat form nominal.
+    { _id: proofId, groupId: ev.groupId, status: 'pending', ...(ev.isAdmin ? {} : { 'member.platformUserId': { $ne: ev.actor.platformUserId } }) },
     { $set: { status: 'approved', nominal, reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } },
     { returnDocument: 'before' }, // versi sebelum dibersihkan: refId masih ada untuk catatan ledger
   ).lean();
-  if (!proof) return { reply: { text: 'Bukti ini sudah diproses.', private: true } };
+  if (!proof) return { reply: { text: 'Bukti ini sudah diproses (atau milikmu sendiri — perlu dicek tim inti lain).', private: true } };
 
   // Bayar beberapa periode sekaligus → pecah per periode agar rekap tepat.
   const amount = group.kas?.amount ?? 0;
@@ -252,6 +253,10 @@ export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
   if (!isTreasurer(group, ev)) return { reply: { text: 'Hanya bendahara atau pengurus kelas yang bisa memproses bukti kas.', private: true } };
   const proof = await KasProofModel.findOne({ _id: id, groupId: ev.groupId }).lean();
   if (!proof || proof.status !== 'pending') return { reply: { text: 'Bukti ini sudah diproses.', private: true } };
+  // Tidak boleh menyetujui/menolak bukti milik sendiri (kecuali admin server).
+  if (!ev.isAdmin && proof.member.platformUserId === ev.actor.platformUserId) {
+    return { reply: { text: 'Bukti milikmu sendiri harus dicek anggota tim inti lain 🙏', private: true } };
+  }
 
   if (verb === 'no') {
     await KasProofModel.updateOne({ _id: id }, { $set: { status: 'rejected', reviewedBy: ev.actor.platformUserId, reviewedAt: now(), ...SCRUB_AFTER_REVIEW } });
@@ -321,10 +326,10 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
       channelId: (cmd.options.channel_tim as string | undefined) ?? null,
     });
     if (ch) {
-      await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'channel', channel: ch });
+      await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'channel', channel: ch, reviewerIds: [cmd.actor.platformUserId] });
       reviewNote = ch.created
         ? `${channelRef(ch.channelId)} (baru dibuat, privat untuk tim inti 🔒)`
-        : `${channelRef(ch.channelId)}${ch.private ? ' 🔒' : ' — ⚠️ channel ini bisa dilihat semua anggota, jadi hanya bendahara/admin yang bisa menyetujui'}`;
+        : `${channelRef(ch.channelId)}${ch.private ? ' 🔒' : ' — ⚠️ channel ini bisa dilihat semua anggota; detail bukti ikut terlihat. Sebaiknya pakai channel privat'}`;
     } else {
       reviewNote = 'channel tim inti tidak bisa dibuat (izin Manage Channels?) — sementara lewat DM bendahara';
       await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'dm' });
@@ -332,6 +337,12 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
   } else if (cmd.options.cek_bukti === 'dm') {
     await saveReviewTarget(cmd.platform, cmd.groupId, { mode: 'dm' });
     reviewNote = 'DM bendahara';
+  }
+  if (typeof cmd.options.tambah_tim === 'string') {
+    const fresh = await getGroup(cmd.platform, cmd.groupId);
+    const granted = await addReviewer(ops, cmd.platform, cmd.groupId, cmd.options.tambah_tim, fresh?.kas?.reviewChannelId ?? null);
+    const who = mention({ platformUserId: cmd.options.tambah_tim });
+    reviewNote = `${reviewNote ? `${reviewNote}\n` : ''}${who} masuk tim inti (boleh menyetujui bukti)${fresh?.kas?.reviewChannelId ? (granted ? ' dan sudah bisa melihat channel tim inti' : ' — beri dia akses channel tim inti secara manual') : ''}`;
   }
   return {
     reply: {

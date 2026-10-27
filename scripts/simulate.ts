@@ -219,6 +219,18 @@ await tick('Tick lagi — sudah 2 minggu ini, tidak posting', '2026-10-31T05:00:
 step('Budi klik 👥 Bentuk tim');
 printReply(await core.onAction({ ...ctx(budi, LOMBA), actionId: actionOf(posts, 'Bentuk tim'), messageId: 'bot5' }));
 
+// ---- Tindak lanjut ala teman sekelas ----
+step('Ani: "aku yang bawa banner ya" (belum ada deadline → ditanya) lalu tidak menjawab');
+printOut(await core.onMessage(say(ani, 'aku yang bawa banner ya')));
+await tick('Tick 3,5 jam kemudian → bot menanyakan lagi sekali', '2026-10-31T08:30:00Z');
+await tick('Tick lagi → tidak ditanya dua kali', '2026-10-31T09:30:00Z');
+step('Budi: "@MIC ingetin aku besok jam 7 bawa proyektor"');
+printOut(await core.onMessage({ ...say(budi, '@MIC ingetin aku besok jam 7 bawa proyektor'), mentionsBot: true }));
+step('Sari: "@MIC tolong ingetin kita senin soal iuran study tour"');
+printOut(await core.onMessage({ ...say(sari, '@MIC tolong ingetin kita senin soal iuran study tour'), mentionsBot: true }));
+await tick('Tick Minggu 1 Nov 07:01 → pengingat Budi (DM)', '2026-11-01T00:01:00Z');
+await tick('Tick Senin 2 Nov 07:30 → rangkuman mingguan + pengingat kelas', '2026-11-02T00:30:00Z');
+
 // ---- M6: pilot mode diam (baseline) ----
 step('/pilot mode diam (Ketua, admin)');
 printReply(await core.onCommand({ ...ctx(ketua, CH, true), name: 'pilot.mode', options: { mode: 'diam' } }));

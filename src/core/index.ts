@@ -7,7 +7,9 @@ import { handleOnboardingAction, handleOnboardingMessage, onJoin, startOnboardin
 import { collectOppPosts, handleOppAction, lombaList, lombaTambah } from './opps/service.ts';
 import { looksLikeKas } from './promises/prefilter.ts';
 import { detectPromise, handlePromiseAction, handleTypedConfirmation, handlePromiseForm, janjiList, janjiSelesai, raporKelas } from './promises/service.ts';
+import { collectFollowUps, collectNudges, collectWeeklyDigests } from './followup/service.ts';
 import { pilotEkspor, pilotMode } from './pilot/service.ts';
+import { collectReminders, handleReminderAction, handleReminderRequest, ingetinCommand } from './reminders/service.ts';
 import { dataHapusAnggota, dataHapusKelas, dataHapusSaya, handleDataAction } from './privacy/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
@@ -85,6 +87,7 @@ export function createCore(llm: LLMProvider): Core {
     rangkum: (cmd) => rangkum(llm, cmd),
     'pilot.mode': pilotMode,
     'pilot.ekspor': pilotEkspor,
+    ingetin: ingetinCommand,
     'data.hapus-saya': dataHapusSaya,
     'data.hapus-anggota': dataHapusAnggota,
     'data.hapus-kelas': dataHapusKelas,
@@ -100,6 +103,8 @@ export function createCore(llm: LLMProvider): Core {
         // Chat pribadi: tidak masuk buffer obrolan grup & tidak dideteksi sebagai janji (privasi).
         if (!group || group.pilotMode === 'jeda') return [];
         if (msg.attachments.length) return handleKasProof(llm, msg, group);
+        const remind = await handleReminderRequest(msg, group);
+        if (remind) return remind;
         return answerQuestion(llm, { ...msg, mentionsBot: true }, group);
       }
       // Rem darurat: kelas yang dijeda tidak diproses sama sekali (perintah tetap jalan untuk membuka jeda).
@@ -119,6 +124,9 @@ export function createCore(llm: LLMProvider): Core {
       if (kasHere && msg.attachments.length) {
         return handleKasProof(llm, msg, group);
       }
+      // "@MIC ingetin aku besok jam 7 …" → pengingat pribadi/kelas.
+      const remind = await handleReminderRequest(msg, group);
+      if (remind) return remind;
       // "jadi dong" untuk janji yang baru ditanya → konfirmasi tanpa klik.
       const typed = await handleTypedConfirmation(msg, group);
       if (typed) return typed;
@@ -136,6 +144,7 @@ export function createCore(llm: LLMProvider): Core {
       if (prefix === 'o') return handleOppAction(ev);
       if (prefix === 'ob') return handleOnboardingAction(ev, opsFor(ev.platform));
       if (prefix === 'd') return handleDataAction(ev);
+      if (prefix === 'r') return handleReminderAction(ev);
       return fail('Tombol ini sudah tidak berlaku.');
     },
 
@@ -160,7 +169,7 @@ export function createCore(llm: LLMProvider): Core {
     },
 
     async tick(at = now()) {
-      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at)]);
+      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectNudges(at), collectFollowUps(at), collectWeeklyDigests(at)]);
       const out: OutgoingMessage[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') out.push(...r.value);

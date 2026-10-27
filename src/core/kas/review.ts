@@ -36,10 +36,26 @@ export async function ensureReviewChannel(
   return id ? { channelId: id, created: true, private: true } : null;
 }
 
-export async function saveReviewTarget(platform: string, groupId: string, target: { mode: 'dm' | 'channel'; channel?: ReviewChannel | null }): Promise<void> {
+/** Simpan tempat cek bukti; `reviewerIds` = tim inti yang boleh menyetujui selain bendahara & admin. */
+export async function saveReviewTarget(
+  platform: string,
+  groupId: string,
+  target: { mode: 'dm' | 'channel'; channel?: ReviewChannel | null; reviewerIds?: string[] },
+): Promise<void> {
   const channel = target.mode === 'channel' ? (target.channel ?? null) : null;
+  const reviewers = [...new Set((target.reviewerIds ?? []).filter(Boolean))];
   await GroupModel.updateOne(
     { platform, groupId },
-    { $set: { 'kas.reviewChannelId': channel?.channelId ?? null, 'kas.reviewChannelPrivate': channel?.private ?? false } },
+    {
+      $set: { 'kas.reviewChannelId': channel?.channelId ?? null, 'kas.reviewChannelPrivate': channel?.private ?? false },
+      ...(reviewers.length ? { $addToSet: { 'kas.reviewerIds': { $each: reviewers } } } : {}),
+    },
   );
+}
+
+/** Tambah anggota tim inti: boleh menyetujui bukti, dan (kalau bisa) diberi akses ke channel tim inti. */
+export async function addReviewer(ops: PlatformOps, platform: string, groupId: string, userId: string, channelId: string | null): Promise<boolean> {
+  await GroupModel.updateOne({ platform, groupId }, { $addToSet: { 'kas.reviewerIds': userId } });
+  if (!channelId || !ops.allowUserInChannel) return false;
+  return ops.allowUserInChannel(groupId, channelId, userId).catch(() => false);
 }

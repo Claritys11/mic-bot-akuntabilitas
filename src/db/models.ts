@@ -19,6 +19,7 @@ const GroupSchema = new Schema(
     // Pilot: 'diam' = bot hanya mencatat janji tanpa membalas/menagih (minggu baseline).
     // 'jeda' = rem darurat: bot berhenti total di kelas ini (tidak mencatat, membalas, atau menagih).
     pilotMode: { type: String, enum: ['off', 'diam', 'jeda'], default: 'off' },
+    lastDigestAt: { type: Date, default: null },
     kas: {
       amount: { type: Number, default: 0 },
       period: { type: String, enum: ['mingguan', 'bulanan'], default: 'bulanan' },
@@ -27,8 +28,10 @@ const GroupSchema = new Schema(
       recipients: { type: [String], default: [] },
       // Bukti dicek di channel tim inti (null = DM bendahara / channel kas).
       reviewChannelId: { type: String, default: null },
-      // Channel tim inti tertutup untuk anggota biasa → siapa pun di sana boleh menyetujui.
+      // Info saja (untuk peringatan); hak menyetujui TIDAK ditentukan dari visibilitas channel.
       reviewChannelPrivate: { type: Boolean, default: false },
+      // Tim inti yang boleh menyetujui bukti selain bendahara & admin (daftar eksplisit).
+      reviewerIds: { type: [String], default: [] },
     },
   },
   { timestamps: true },
@@ -74,6 +77,11 @@ const PromiseSchema = new Schema(
     autoActivated: { type: Boolean, default: false },
     // Dicatat diam-diam saat mode pilot 'diam' (baseline): tidak pernah ditagih.
     shadow: { type: Boolean, default: false },
+    // Tindak lanjut sekali saja: tanya ulang konfirmasi, dan tanya kabar sehari setelah lewat deadline.
+    // Waktu bot bertanya "jadi?" (jam bot, ikut DEMO_TIME_SCALE — createdAt memakai jam sistem).
+    askedAt: { type: Date, default: null },
+    nudgedAt: { type: Date, default: null },
+    followedUpAt: { type: Date, default: null },
     ownerTouched: { type: Boolean, default: false },
   },
   { timestamps: true },
@@ -271,3 +279,24 @@ export const HeartbeatModel = mongoose.model('Heartbeat', HeartbeatSchema);
 const DowntimeSchema = new Schema({ from: { type: Date, required: true }, to: { type: Date, required: true }, minutes: { type: Number, required: true } }, { timestamps: false });
 DowntimeSchema.index({ from: 1 });
 export const DowntimeModel = mongoose.model('Downtime', DowntimeSchema);
+
+// ---------- Pengingat pribadi / kelas ("@MIC ingetin aku besok jam 7 …") ----------
+const ReminderSchema = new Schema(
+  {
+    platform: { type: String, required: true },
+    groupId: { type: String, required: true },
+    channelId: { type: String, required: true },
+    member: { type: MemberRef, required: true },
+    target: { type: String, enum: ['self', 'group'], required: true },
+    what: { type: String, required: true },
+    at: { type: Date, required: true },
+    sentAt: { type: Date, default: null },
+    cancelled: { type: Boolean, default: false },
+  },
+  { timestamps: true },
+);
+ReminderSchema.index({ sentAt: 1, cancelled: 1, at: 1 });
+// Isi pengingat bisa pribadi → hapus sendiri 30 hari setelah waktunya.
+ReminderSchema.index({ at: 1 }, { expireAfterSeconds: 30 * 24 * 3600 });
+export const ReminderModel = mongoose.model('Reminder', ReminderSchema);
+export type ReminderDoc = InferSchemaType<typeof ReminderSchema> & { _id: mongoose.Types.ObjectId };

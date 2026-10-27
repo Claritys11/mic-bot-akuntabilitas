@@ -70,6 +70,7 @@ export const COMMANDS: CommandSpec[] = [
             ],
           },
           { name: 'channel_tim', description: 'Pakai channel tim inti yang sudah ada (opsional)', type: 'channel' },
+          { name: 'tambah_tim', description: 'Tambah anggota tim inti (boleh menyetujui bukti kas)', type: 'user' },
         ],
       },
       { name: 'rekap', description: 'Siapa sudah/belum bayar periode ini', options: [{ name: 'umumkan', description: 'Tampilkan ke semua (bendahara)', type: 'boolean' }] },
@@ -96,6 +97,15 @@ export const COMMANDS: CommandSpec[] = [
       { name: 'hapus-saya', description: 'Hapus permanen datamu di kelas ini' },
       { name: 'hapus-anggota', description: 'Hapus data seorang anggota (pengurus)', options: [{ name: 'anggota', description: 'Anggota', type: 'user', required: true }] },
       { name: 'hapus-kelas', description: 'Hapus SEMUA data kelas ini (pengurus)' },
+    ],
+  },
+  {
+    name: 'ingetin',
+    description: 'Minta diingatkan (bisa juga: "@MIC ingetin aku besok jam 7 …")',
+    options: [
+      { name: 'apa', description: 'Mau diingetin soal apa', type: 'string', required: true },
+      { name: 'kapan', description: 'Mis. besok jam 7, jumat sore, tgl 30', type: 'string', required: true },
+      { name: 'untuk', description: 'Untuk siapa', type: 'string', choices: [{ name: 'aku saja (DM)', value: 'aku' }, { name: 'seluruh kelas', value: 'kelas' }] },
     ],
   },
   {

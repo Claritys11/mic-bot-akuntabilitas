@@ -74,7 +74,7 @@ export function promiseCard(p: PromiseDoc, title: string, tone: Card['tone'] = '
   };
 }
 
-const confirmActions = (id: string, level: SpeechLevel = 'sopan'): Action[] => [
+export const confirmActions = (id: string, level: SpeechLevel = 'sopan'): Action[] => [
   { id: ids.confirm(id), label: LABELS[level].confirm, kind: 'success' },
   { id: ids.edit(id), label: LABELS[level].edit, kind: 'secondary' },
   { id: ids.cancel(id), label: LABELS[level].cancel, kind: 'danger' },
@@ -82,13 +82,13 @@ const confirmActions = (id: string, level: SpeechLevel = 'sopan'): Action[] => [
 
 export const doneAction = (id: string, level: SpeechLevel = 'sopan'): Action => ({ id: ids.done(id), label: LABELS[level].done, kind: 'success' });
 
-const activeActions = (id: string, level: SpeechLevel): Action[] => [
+export const activeActions = (id: string, level: SpeechLevel): Action[] => [
   { id: ids.edit(id), label: LABELS[level].edit, kind: 'secondary' },
   doneAction(id, level),
 ];
 
 /** Baris kecil di bawah obrolan: apa yang dicatat + deadline hasil tafsiran (biar bisa dikoreksi). */
-const detailLine = (p: Pick<PromiseDoc, 'task' | 'deadline'>) => `_📝 ${p.task} · ⏰ ${deadlineLabel(p)}_`;
+export const detailLine = (p: Pick<PromiseDoc, 'task' | 'deadline'>) => `_📝 ${p.task} · ⏰ ${deadlineLabel(p)}_`;
 
 /** Selesaikan deadline: hasil parser; kalau lewat dan tanpa jam, geser ke 23:59 hari itu. */
 export function resolveDeadline(text: string | null | undefined, at: Date): Date | null {
@@ -193,6 +193,7 @@ export async function detectPromise(llm: LLMProvider, msg: IncomingMessage, grou
     deadline,
     deadlineText: result.ex.deadlineText ?? null,
     source: result.source,
+    askedAt: at,
     ...(auto ? { status: 'active', confirmedAt: at, stage: initialStage(deadline!, at), autoActivated: true } : {}),
     // Baseline: semua janji yang terdeteksi dicatat aktif tanpa ditanya; tidak pernah ditagih (shadow).
     ...(shadow ? { status: 'active', confirmedAt: at, shadow: true } : {}),
@@ -430,7 +431,8 @@ function parseDeadlineInput(input: string, at: Date): Date | null {
 export async function handlePromiseForm(ev: FormSubmit): Promise<Reply> {
   const id = ev.formId.split(':')[2];
   if (!id || !isValidObjectId(id)) return deny('Janji tidak ditemukan.');
-  const p = await PromiseModel.findOne({ _id: id, groupId: ev.groupId }).lean<PromiseDoc>();
+  // Dari DM (tindak lanjut lewat deadline) groupId kosong → cukup cek kepemilikan.
+  const p = await PromiseModel.findOne(ev.groupId ? { _id: id, groupId: ev.groupId } : { _id: id }).lean<PromiseDoc>();
   if (!p || !canManage(p, ev)) return deny('Janji tidak ditemukan atau bukan milikmu.');
 
   const at = now();

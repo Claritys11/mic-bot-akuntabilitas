@@ -30,6 +30,14 @@ describe('jam tanpa hari → kemunculan terdekat ke depan (temuan holdout)', () 
   });
 });
 
+describe('kosakata waktu Jawa', () => {
+  test('sesuk / mengko bengi / sesuk esuk', () => {
+    expect(p('tak garapne sesuk')).toBe('2026-10-23 20:00');
+    expect(p('mengko bengi')).toBe('2026-10-22 20:00');
+    expect(p('sesuk esuk')).toBe('2026-10-23 08:00');
+  });
+});
+
 describe('parseRelativeDate (Asia/Jakarta)', () => {
   test('nama hari → kemunculan berikutnya, jam default 20:00', () => {
     expect(p('aku yang bikin PPT ya, Jumat jadi')).toBe('2026-10-23 20:00');

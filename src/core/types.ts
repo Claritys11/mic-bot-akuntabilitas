@@ -162,8 +162,10 @@ export interface PlatformOps {
   findChannel?(groupId: string, names: string[]): Promise<string | null>;
   /** Buat channel privat: hanya userIds (+ admin server & bot) yang bisa melihat. */
   createPrivateChannel?(groupId: string, name: string, topic: string, nearChannelId: string, allowUserIds: string[]): Promise<string | null>;
-  /** true kalau anggota biasa (@everyone) tidak bisa melihat channel ini. */
+  /** true kalau anggota biasa (@everyone) tidak bisa melihat channel ini (hanya untuk peringatan, bukan izin). */
   isPrivateChannel?(groupId: string, channelId: string): Promise<boolean>;
+  /** Beri satu user akses lihat & kirim di channel. */
+  allowUserInChannel?(groupId: string, channelId: string, userId: string): Promise<boolean>;
   listMembers?(groupId: string): Promise<Member[]>;
 }
 

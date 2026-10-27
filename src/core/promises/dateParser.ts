@@ -134,7 +134,15 @@ function nextOccurrence(time: TimeOfDay, today: DayRef, now: Date): Date {
  * menjadi Date, relatif terhadap `now`, di zona Asia/Jakarta. null kalau tidak ada tanggal.
  */
 export function parseRelativeDate(input: string, now: Date): ParsedDate | null {
-  const t = input.toLowerCase().replace(/[’'`]/g, '').replace(/\s+/g, ' ');
+  const t = input
+    .toLowerCase()
+    .replace(/[’'`]/g, '')
+    // Kosakata waktu Jawa → padanan Indonesia
+    .replace(/\bsesuk\b/g, 'besok')
+    .replace(/\bmengko\b/g, 'nanti')
+    .replace(/\bbengi\b/g, 'malam')
+    .replace(/\besuk\b/g, 'pagi')
+    .replace(/\s+/g, ' ');
   const w = wibParts(now);
   const today: DayRef = { year: w.year, month: w.month, day: w.day };
   const mondayIdx = (w.weekday + 6) % 7;

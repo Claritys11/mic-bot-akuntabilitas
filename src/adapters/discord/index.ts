@@ -339,6 +339,18 @@ function platformOps(client: Client) {
         return null;
       }
     },
+    async allowUserInChannel(groupId: string, channelId: string, userId: string) {
+      try {
+        const guild = await client.guilds.fetch(groupId);
+        const ch = await guild.channels.fetch(channelId);
+        if (!ch || ch.type !== ChannelType.GuildText) return false;
+        await ch.permissionOverwrites.edit(userId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
+        return true;
+      } catch (err) {
+        console.error('[discord] gagal memberi akses channel:', (err as Error).message);
+        return false;
+      }
+    },
     async isPrivateChannel(groupId: string, channelId: string) {
       const guild = await client.guilds.fetch(groupId);
       const ch = await guild.channels.fetch(channelId).catch(() => null);
