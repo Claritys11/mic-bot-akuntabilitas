@@ -1,17 +1,13 @@
-import { GroupModel, MemberModel, type GroupDoc } from '../../db/models.ts';
+import { GroupModel, type GroupDoc } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { addReviewer, removeReviewer } from '../kas/review.ts';
 import { markKasDirty } from '../kas/service.ts';
 import { channelRef, mention, type CommandInvocation, type PlatformOps, type Reply } from '../types.ts';
-import { audit } from './audit.ts';
+import { audit, memberName } from './audit.ts';
 import { can, MAX_PER_ROLE, ROLE_LABEL, ROLES, type Role } from './roles.ts';
 
 const deny = (text: string): Reply => ({ reply: { text, private: true } });
 
-/** Nama tampilan untuk jejak audit (ID mentah tidak berarti apa-apa di Google Sheet). */
-async function memberName(platform: string, groupId: string, id: string): Promise<string> {
-  return (await MemberModel.findOne({ platform, groupId, platformUserId: id }, { displayName: 1 }).lean())?.displayName ?? id;
-}
 
 function teamCard(g: GroupDoc) {
   const people = (ids: string[]) => (ids.length ? ids.map((id) => mention({ platformUserId: id })).join(', ') : '—');

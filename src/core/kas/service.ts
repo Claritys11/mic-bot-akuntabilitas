@@ -24,7 +24,7 @@ import {
   type SpeechLevel,
 } from '../types.ts';
 import { inQuietHours } from '../quiet.ts';
-import { audit } from '../team/audit.ts';
+import { audit, memberName } from '../team/audit.ts';
 import { can } from '../team/roles.ts';
 import { addReviewer, ensureReviewChannel, removeReviewer, saveReviewTarget } from './review.ts';
 import { sheetMarker, spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
@@ -388,7 +388,7 @@ export async function kasAtur(cmd: CommandInvocation, ops: PlatformOps = {}): Pr
   );
 
   await markKasDirty(cmd.groupId);
-  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${cmd.options.bendahara}` : ''}`);
+  await audit(cmd.groupId, cmd.actor, 'kas.atur', `${rupiah(amount)}/${period}${typeof cmd.options.bendahara === 'string' ? `, bendahara ${await memberName(cmd.platform, cmd.groupId, cmd.options.bendahara)}` : ''}`);
   // Tempat cek bukti: channel tim inti (disebut / dicari / dibuatkan) atau DM bendahara.
   let reviewNote: string | null = null;
   const wantChannel = cmd.options.cek_bukti === 'channel' || typeof cmd.options.channel_tim === 'string';
