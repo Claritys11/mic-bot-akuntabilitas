@@ -60,6 +60,10 @@ describe('pertanyaan yang dijawab bot', () => {
     const facts = { pengingat: [{ isi: 'bawa kartu pelajar', waktu: 'Kamis, 29 Okt 07:00 WIB', untuk: 'kamu' }] };
     expect(fallbackAnswer(facts, ['pengingat'], 'santai', true)).toContain('bawa kartu pelajar (Kamis, 29 Okt 07:00 WIB)');
     expect(fallbackAnswer({ pengingat: [] }, ['pengingat'], 'santai', true)).toContain('belum ada pengingat');
+    // Di channel grup: pengingat pribadi penanya hanya jumlahnya.
+    const grp = fallbackAnswer({ pengingat: [], pengingatPribadiPenanya: 2 }, ['pengingat'], 'santai', true)!;
+    expect(grp).toContain('2 pengingat pribadi');
+    expect(grp).not.toContain('belum ada pengingat');
   });
   test('jawaban cadangan dari data, tanpa membeberkan siapa yang belum bayar', () => {
     const facts = {

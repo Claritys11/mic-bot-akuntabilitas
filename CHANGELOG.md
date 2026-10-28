@@ -34,7 +34,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 - Kelas yang mengatur kas sebelum fitur Sheets ada tidak pernah ditawari laporan (kolom `setAt` kosong).
 - Pengingat tanpa jam (_"jangan lupa besok ulangan"_, `/ingetin kapan:jumat`) dulu dijadwalkan 20.00 di hari acaranya — setelah acaranya lewat. Sekarang malam sebelumnya 19.00 (sudah lewat → 06.00 hari itu), dengan keterangan di tawaran & konfirmasi.
 - Kalimat yang sudah lewat (_"tadi"_, _"kemarin"_) tidak lagi ditawari pengingat; sisa kata waktu (_"sebelum"_, _"paling lambat"_) dan _"ya/guys"_ di tengah kalimat tidak ikut jadi isi pengingat.
-- Bot ditanya _"pengingat apa aja yang aktif?"_ menjawab daftar janji; sekarang membaca pengingat (milik penanya + untuk kelas; pengingat pribadi orang lain tidak dibuka).
+- Bot ditanya _"pengingat apa aja yang aktif?"_ menjawab daftar janji; sekarang membaca pengingat: yang untuk kelas dirinci, pengingat pribadi penanya hanya jumlahnya di channel grup (rinci di chat pribadi), milik orang lain tidak pernah.
 - Tombol tawaran laporan Sheets yang lama tetap terpajang setelah sheet dibuat; diklik → tombolnya dihapus, link dikirim privat.
 
 ### Direncanakan

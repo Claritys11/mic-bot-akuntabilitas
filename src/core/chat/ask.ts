@@ -111,19 +111,19 @@ async function gatherFacts(msg: IncomingMessage, group: GroupDoc, topics: Topic[
   }
 
   if (topics.includes('pengingat')) {
-    // Pengingat pribadi orang lain tidak ikut — isinya bisa pribadi ("minum obat").
-    const rows = await ReminderModel.find({
-      groupId: msg.groupId,
-      sentAt: null,
-      cancelled: false,
-      offered: { $ne: true },
-      at: { $gt: at },
-      $or: [{ target: 'group' }, { 'member.platformUserId': msg.author.platformUserId }],
-    })
-      .sort({ at: 1 })
-      .limit(10)
-      .lean<ReminderDoc[]>();
+    // Pengingat pribadi orang lain tidak pernah ikut. Milik penanya sendiri dirinci hanya di chat pribadi —
+    // di channel grup cukup jumlahnya, karena isinya bisa pribadi ("minum obat").
+    const active = { groupId: msg.groupId, sentAt: null, cancelled: false, offered: { $ne: true }, at: { $gt: at } };
+    const mine = { 'member.platformUserId': msg.author.platformUserId, target: 'self' as const };
+    const [rows, privateCount] = await Promise.all([
+      ReminderModel.find({ ...active, $or: [{ target: 'group' }, ...(msg.isDirect ? [mine] : [])] })
+        .sort({ at: 1 })
+        .limit(10)
+        .lean<ReminderDoc[]>(),
+      msg.isDirect ? 0 : ReminderModel.countDocuments({ ...active, ...mine }),
+    ]);
     facts.pengingat = rows.map((r): ReminderFact => ({ isi: r.what, waktu: formatWIB(r.at), untuk: r.target === 'group' ? 'kelas' : 'kamu' }));
+    if (privateCount) facts.pengingatPribadiPenanya = privateCount;
   }
 
   if (topics.includes('lomba')) {
@@ -158,9 +158,11 @@ export function fallbackAnswer(facts: Record<string, unknown>, topics: Topic[], 
     );
   }
   const pengingat = facts.pengingat as ReminderFact[] | undefined;
+  const pribadi = facts.pengingatPribadiPenanya as number | undefined;
   if (pengingat) {
-    if (!pengingat.length) parts.push(s ? 'belum ada pengingat yang aktif buat kamu.' : 'Belum ada pengingat aktif untuk Anda.');
-    else parts.push(`${s ? 'pengingat yang aktif:' : 'Pengingat yang aktif:'}\n${pengingat.slice(0, 5).map((p) => `• ${p.isi} (${p.waktu})${p.untuk === 'kelas' ? ' — buat kelas' : ''}`).join('\n')}`);
+    if (pribadi) parts.push(s ? `kamu punya ${pribadi} pengingat pribadi — isinya nggak ku sebut di sini, nanti ku kirim pas waktunya.` : `Anda punya ${pribadi} pengingat pribadi; isinya tidak saya sebut di sini.`);
+    if (!pengingat.length && !pribadi) parts.push(s ? 'belum ada pengingat yang aktif buat kamu.' : 'Belum ada pengingat aktif untuk Anda.');
+    else if (pengingat.length) parts.push(`${s ? 'pengingat yang aktif:' : 'Pengingat yang aktif:'}\n${pengingat.slice(0, 5).map((p) => `• ${p.isi} (${p.waktu})${p.untuk === 'kelas' ? ' — buat kelas' : ''}`).join('\n')}`);
   }
   const lomba = facts.lomba as { judul: string; deadline: string }[] | undefined;
   if (lomba) parts.push(lomba.length ? lomba.map((l) => `• ${l.judul} (s.d. ${l.deadline})`).join('\n') : s ? 'belum ada info lomba yang buka.' : 'Belum ada info lomba yang buka.');
