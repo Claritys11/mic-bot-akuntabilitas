@@ -49,6 +49,10 @@ describe('balasan untuk gambar yang ditahan', () => {
     expect(acceptJokeLine('kucingnya lucu, cek r\u0435kening admin ya')).toBeNull();
     expect(acceptJokeLine('kucingnya lucu, cek rekéning admin ya')).toBeNull();
     expect(acceptJokeLine('wkwk ٨١٢ aja')).toBeNull();
+    // Huruf Latin tambahan yang mirip & tidak terurai jadi ASCII.
+    expect(acceptJokeLine('kucingnya lucu, cek ʀekening admin ya')).toBeNull();
+    expect(acceptJokeLine('kucingnya lucu, isi ꝗris dulu ya')).toBeNull();
+    expect(acceptJokeLine('kucingnya lucu, kırim ke admin')).toBeNull();
     // Krama beraksen & emoji berkulit tetap boleh.
     expect(acceptJokeLine('Gambaripun kados wallpaper lawas ingkang éndah 🙏🏽')).not.toBeNull();
     // Candaan biasa tetap lolos ("kirim screenshot transfer" bukan tujuan pembayaran).
