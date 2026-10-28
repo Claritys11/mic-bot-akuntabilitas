@@ -44,6 +44,8 @@ describe('pertanyaan yang dijawab bot', () => {
     expect(looksLikeQuestion('PR matematika kapan dikumpulin?')).toBe(true);
     expect(looksLikeQuestion('wonten tugas menapa mboten')).toBe(true);
     expect(looksLikeQuestion('ono tugas ora')).toBe(true);
+    expect(looksLikeQuestion('pengingat aku apa aja?')).toBe(true);
+    expect(looksLikeQuestion('reminder buat besok ada gak')).toBe(true);
   });
   test('tidak lolos', () => {
     expect(looksLikeQuestion('wkwk iya bener')).toBe(false);
@@ -52,6 +54,12 @@ describe('pertanyaan yang dijawab bot', () => {
   });
   test('topik', () => {
     expect(topicsOf('kas sama tugas gimana?')).toEqual(['tugas', 'kas']);
+    expect(topicsOf('pengingat apa aja yang aktif buat aku?')).toEqual(['pengingat']);
+  });
+  test('pengingat: jawaban cadangan menyebut pengingat, bukan janji', () => {
+    const facts = { pengingat: [{ isi: 'bawa kartu pelajar', waktu: 'Kamis, 29 Okt 07:00 WIB', untuk: 'kamu' }] };
+    expect(fallbackAnswer(facts, ['pengingat'], 'santai', true)).toContain('bawa kartu pelajar (Kamis, 29 Okt 07:00 WIB)');
+    expect(fallbackAnswer({ pengingat: [] }, ['pengingat'], 'santai', true)).toContain('belum ada pengingat');
   });
   test('jawaban cadangan dari data, tanpa membeberkan siapa yang belum bayar', () => {
     const facts = {

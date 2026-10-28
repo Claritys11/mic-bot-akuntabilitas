@@ -32,6 +32,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ### Diperbaiki
 - Uji dengan Google sungguhan: kode locale `id_ID` ditolak Sheets API → coba `in_ID`/`id_ID`, lalu bawaan akun.
 - Kelas yang mengatur kas sebelum fitur Sheets ada tidak pernah ditawari laporan (kolom `setAt` kosong).
+- Pengingat tanpa jam (_"jangan lupa besok ulangan"_, `/ingetin kapan:jumat`) dulu dijadwalkan 20.00 di hari acaranya — setelah acaranya lewat. Sekarang malam sebelumnya 19.00 (sudah lewat → 06.00 hari itu), dengan keterangan di tawaran & konfirmasi.
+- Kalimat yang sudah lewat (_"tadi"_, _"kemarin"_) tidak lagi ditawari pengingat; sisa kata waktu (_"sebelum"_, _"paling lambat"_) dan _"ya/guys"_ di tengah kalimat tidak ikut jadi isi pengingat.
+- Bot ditanya _"pengingat apa aja yang aktif?"_ menjawab daftar janji; sekarang membaca pengingat (milik penanya + untuk kelas; pengingat pribadi orang lain tidak dibuka).
+- Tombol tawaran laporan Sheets yang lama tetap terpajang setelah sheet dibuat; diklik → tombolnya dihapus, link dikirim privat.
 
 ### Direncanakan
 - Fase 2 — pengaturan ramah pengguna: panel `/pengaturan`, peran pengurus, kas lengkap (tunai,

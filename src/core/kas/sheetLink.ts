@@ -65,7 +65,13 @@ export async function handleSheetLinkAction(ev: ActionEvent, linker?: SheetLinke
     };
   }
   if (!linker) return { reply: { text: 'Fitur ini belum diaktifkan operator bot (GOOGLE_OAUTH_CLIENT_ID). Sementara pakai `/kas ekspor`.', private: true } };
-  if (group.kas?.sheetId) return { reply: { text: `Laporan kas sudah ada: ${sheetUrl(group.kas.sheetId)}\nMau ganti? \`/kas sheet link:putus\` dulu.`, private: true } };
+  if (group.kas?.sheetId) {
+    // Tombol tawaran lama masih terpajang → hilangkan, supaya tidak ada yang mengira sheet belum dibuat.
+    return {
+      update: { actions: [], text: '📊 Laporan kas Google Sheets sudah dibuat. Linknya: `/kas sheet` (pengurus kas).' },
+      reply: { text: `Laporan kas sudah ada: ${sheetUrl(group.kas.sheetId)}\nMau ganti? \`/kas sheet link:putus\` dulu.`, private: true },
+    };
+  }
   let s;
   try {
     s = await linker.start();

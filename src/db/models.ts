@@ -369,6 +369,8 @@ const ReminderSchema = new Schema(
     cancelled: { type: Boolean, default: false },
     // Ditawarkan bot dari obrolan biasa, belum diterima pemiliknya → tidak dikirim.
     offered: { type: Boolean, default: false },
+    // Jam diajukan dari hari acaranya ('eve' malam sebelumnya / 'morning' pagi harinya) → disebut di konfirmasi.
+    lead: { type: String, enum: ['eve', 'morning', null], default: null },
   },
   { timestamps: true },
 );

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { OpportunityModel, PromiseModel, type GroupDoc, type PromiseDoc } from '../../db/models.ts';
+import { OpportunityModel, PromiseModel, ReminderModel, type GroupDoc, type PromiseDoc, type ReminderDoc } from '../../db/models.ts';
 import { askPrompt } from '../../llm/prompts/ask.ts';
 import { chatJson, type LLMProvider } from '../../llm/provider.ts';
 import { listMembers } from '../groups.ts';
@@ -14,12 +14,13 @@ import { detectMood, graverMood, tidyReply, type Mood } from './mood.ts';
 // Bot ikut menjawab saat ditanya ("ada tugas gak nih?", "kas aku udah lunas?") atau di-tag.
 // Jawaban hanya dari data yang tercatat; LLM cuma merangkai kalimatnya.
 
-type Topic = 'tugas' | 'kas' | 'lomba';
+type Topic = 'tugas' | 'kas' | 'lomba' | 'pengingat';
 
 const TOPICS: Record<Topic, RegExp> = {
   tugas: /\b(tugas\w*|pr|deadline\w*|dl|janji\w*|kerjaan\w*|garapan\w*|to ?do|tanggungan)\b/i,
   kas: /\b(kas|iuran|bayar\w*|lunas|tagihan|nunggak|utang)\b/i,
   lomba: /\b(lomba|kompetisi|beasiswa|event|olimpiade)\b/i,
+  pengingat: /\b(pengingat\w*|reminder\w*|diingetin|diingatkan|alarm)\b/i,
 };
 // Kata tanya kuat cukup sendirian; kata lemah ("udah", "ada") butuh partikel tanya di akhir
 // supaya "tugasnya udah aku kirim" tidak dianggap pertanyaan.
@@ -55,6 +56,12 @@ interface PromiseFact {
   deadline: string | null;
   lewat: boolean;
   punyaPenanya: boolean;
+}
+
+interface ReminderFact {
+  isi: string;
+  waktu: string;
+  untuk: 'kelas' | 'kamu';
 }
 
 async function gatherFacts(msg: IncomingMessage, group: GroupDoc, topics: Topic[]) {
@@ -103,6 +110,22 @@ async function gatherFacts(msg: IncomingMessage, group: GroupDoc, topics: Topic[
     facts.kas = 'kas kelas belum diatur';
   }
 
+  if (topics.includes('pengingat')) {
+    // Pengingat pribadi orang lain tidak ikut — isinya bisa pribadi ("minum obat").
+    const rows = await ReminderModel.find({
+      groupId: msg.groupId,
+      sentAt: null,
+      cancelled: false,
+      offered: { $ne: true },
+      at: { $gt: at },
+      $or: [{ target: 'group' }, { 'member.platformUserId': msg.author.platformUserId }],
+    })
+      .sort({ at: 1 })
+      .limit(10)
+      .lean<ReminderDoc[]>();
+    facts.pengingat = rows.map((r): ReminderFact => ({ isi: r.what, waktu: formatWIB(r.at), untuk: r.target === 'group' ? 'kelas' : 'kamu' }));
+  }
+
   if (topics.includes('lomba')) {
     const opps = (await OpportunityModel.find({ deadline: { $gt: at }, groupId: { $in: [null, msg.groupId] }, draft: { $ne: true } }).sort({ deadline: 1 }).limit(30).lean())
       .filter((o) => visibleTo(group, o))
@@ -133,6 +156,11 @@ export function fallbackAnswer(facts: Record<string, unknown>, topics: Topic[], 
         ? s ? `kas ${kas.periode} kamu udah lunas 👍` : `Kas ${kas.periode} kamu sudah lunas.`
         : s ? `kas ${kas.periode} kamu belum masuk catatan, ${kas.iuran} ya.` : `Kas ${kas.periode} kamu belum tercatat (${kas.iuran}).`,
     );
+  }
+  const pengingat = facts.pengingat as ReminderFact[] | undefined;
+  if (pengingat) {
+    if (!pengingat.length) parts.push(s ? 'belum ada pengingat yang aktif buat kamu.' : 'Belum ada pengingat aktif untuk Anda.');
+    else parts.push(`${s ? 'pengingat yang aktif:' : 'Pengingat yang aktif:'}\n${pengingat.slice(0, 5).map((p) => `• ${p.isi} (${p.waktu})${p.untuk === 'kelas' ? ' — buat kelas' : ''}`).join('\n')}`);
   }
   const lomba = facts.lomba as { judul: string; deadline: string }[] | undefined;
   if (lomba) parts.push(lomba.length ? lomba.map((l) => `• ${l.judul} (s.d. ${l.deadline})`).join('\n') : s ? 'belum ada info lomba yang buka.' : 'Belum ada info lomba yang buka.');

@@ -5,7 +5,7 @@ import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { parseRelativeDate } from '../promises/dateParser.ts';
 import { formatWIB, now } from '../time.ts';
 import { mention, type ActionEvent, type CommandInvocation, type IncomingMessage, type Member, type OutgoingMessage, type Platform, type Reply, type SpeechLevel } from '../types.ts';
-import { detectReminderOffer, looksLikeReminderRequest, parseReminderRequest } from './parse.ts';
+import { detectReminderOffer, looksLikeReminderRequest, parseReminderRequest, reminderTime } from './parse.ts';
 
 // Bot sebagai teman yang bisa dititipi pengingat: "@MIC ingetin aku besok jam 7 bawa proyektor".
 
@@ -23,6 +23,13 @@ const CONFIRM: Record<SpeechLevel, (when: string, what: string, group: boolean) 
   sopan: (when, what, group) => `Baik, ${when} saya ingatkan ${group ? 'kelas' : 'Anda'}: _${what}_ 🙂`,
   krama: (when, what, group) => `Sendika, ${when} kula engetaken ${group ? 'sedaya kanca' : 'panjenengan'}: _${what}_ 🙏`,
 };
+// Jam diajukan dari hari acaranya → jelaskan, supaya "Rabu 19.00" tidak dikira jam acaranya.
+const LEAD_NOTE: Record<SpeechLevel, Record<'eve' | 'morning', string>> = {
+  santai: { eve: ' (malam sebelumnya, biar sempat siap-siap)', morning: ' (pagi sebelum berangkat)' },
+  sopan: { eve: ' (malam sebelumnya)', morning: ' (pagi sebelum berangkat)' },
+  krama: { eve: ' (dalu sakderengipun)', morning: ' (enjing sakderengipun tindak)' },
+};
+const whenText = (at: Date, level: SpeechLevel, lead?: 'eve' | 'morning') => formatWIB(at) + (lead ? LEAD_NOTE[level][lead] : '');
 const ASK_WHEN: Record<SpeechLevel, string> = {
   santai: 'boleh, kapan ku ingetin? tulis lagi pakai waktunya ya, misal _"ingetin aku besok jam 7 bawa proyektor"_',
   sopan: 'Baik, kapan perlu saya ingatkan? Mohon tulis ulang dengan waktunya, misalnya _"ingatkan saya besok jam 7 bawa proyektor"_.',
@@ -51,11 +58,11 @@ async function checkLimits(groupId: string, userId: string, at: Date): Promise<s
   return null;
 }
 
-async function create(input: { platform: Platform; groupId: string; channelId: string; member: Member; target: 'self' | 'group'; what: string; at: Date }, level: SpeechLevel) {
+async function create(input: { platform: Platform; groupId: string; channelId: string; member: Member; target: 'self' | 'group'; what: string; at: Date; lead?: 'eve' | 'morning' }, level: SpeechLevel) {
   const limit = await checkLimits(input.groupId, input.member.platformUserId, input.at);
   if (limit) return { error: limit };
   const doc = await ReminderModel.create({ ...input, member: { platformUserId: input.member.platformUserId, displayName: input.member.displayName } });
-  return { text: CONFIRM[level](formatWIB(input.at), input.what, input.target === 'group'), id: String(doc._id) };
+  return { text: CONFIRM[level](whenText(input.at, level, input.lead), input.what, input.target === 'group'), id: String(doc._id) };
 }
 
 /** "@MIC ingetin aku …" — hanya kalau bot di-tag/dibalas atau lewat chat pribadi. null = bukan permintaan pengingat. */
@@ -68,7 +75,7 @@ export async function handleReminderRequest(msg: IncomingMessage, group: GroupDo
   if (!req.at) return [{ to, text: ASK_WHEN[level] }];
   // Dari chat pribadi tidak bisa mengumumkan ke grup.
   const target = msg.isDirect ? 'self' : req.target;
-  const r = await create({ platform: msg.platform, groupId: msg.groupId, channelId: msg.isDirect ? (group.mainChannelId ?? msg.channelId) : msg.channelId, member: msg.author, target, what: req.what, at: req.at }, level);
+  const r = await create({ platform: msg.platform, groupId: msg.groupId, channelId: msg.isDirect ? (group.mainChannelId ?? msg.channelId) : msg.channelId, member: msg.author, target, what: req.what, at: req.at, lead: req.lead }, level);
   if ('error' in r) return [{ to, text: r.error! }];
   return [{ to, text: r.text, actions: [{ id: cancelId(r.id), label: 'Batal', kind: 'secondary' }] }];
 }
@@ -91,6 +98,7 @@ export async function offerReminder(msg: IncomingMessage, group: GroupDoc): Prom
     target: req.target,
     what: req.what,
     at: req.at,
+    lead: req.lead ?? null,
     offered: true,
   });
   const level = group.speechLevel as SpeechLevel;
@@ -99,7 +107,7 @@ export async function offerReminder(msg: IncomingMessage, group: GroupDoc): Prom
   return [
     {
       to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id },
-      text: OFFER[level](formatWIB(req.at), req.what, req.target === 'group'),
+      text: OFFER[level](whenText(req.at, level, req.lead), req.what, req.target === 'group'),
       actions: [
         { id: acceptId(id), label: yes, kind: 'primary' },
         { id: cancelId(id), label: no, kind: 'secondary' },
@@ -113,10 +121,11 @@ export async function ingetinCommand(cmd: CommandInvocation): Promise<Reply> {
   if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
   const what = String(cmd.options.apa ?? '').trim().slice(0, 200);
   const parsed = parseRelativeDate(String(cmd.options.kapan ?? ''), now());
+  const when = parsed && reminderTime(parsed, now());
   if (!what) return { reply: { text: 'Isi dulu mau diingetin soal apa.', private: true } };
-  if (!parsed || parsed.date <= now()) return { reply: { text: `Aku belum paham waktunya "${cmd.options.kapan}". Coba "besok jam 7" atau "jumat sore".`, private: true } };
+  if (!when) return { reply: { text: `Aku belum paham waktunya "${cmd.options.kapan}". Coba "besok jam 7" atau "jumat sore".`, private: true } };
   const target = cmd.options.untuk === 'kelas' ? 'group' : 'self';
-  const r = await create({ platform: cmd.platform, groupId: cmd.groupId, channelId: cmd.channelId, member: cmd.actor, target, what, at: parsed.date }, group.speechLevel as SpeechLevel);
+  const r = await create({ platform: cmd.platform, groupId: cmd.groupId, channelId: cmd.channelId, member: cmd.actor, target, what, at: when.at, lead: when.lead }, group.speechLevel as SpeechLevel);
   if ('error' in r) return { reply: { text: r.error!, private: true } };
   return { reply: { text: r.text, private: target === 'self', actions: [{ id: cancelId(r.id), label: 'Batal', kind: 'secondary' }] } };
 }
@@ -147,7 +156,7 @@ async function acceptOffer(ev: ActionEvent, r: ReminderDoc, own: boolean): Promi
   if (!ok) return { reply: { text: 'Tawaran ini sudah dijawab.', private: true } };
   const group = await getGroup(r.platform as Platform, r.groupId);
   const level = (group?.speechLevel ?? 'santai') as SpeechLevel;
-  return { update: { text: CONFIRM[level](formatWIB(r.at), r.what, r.target === 'group'), actions: [{ id: cancelId(String(r._id)), label: 'Batal', kind: 'secondary' }] } };
+  return { update: { text: CONFIRM[level](whenText(r.at, level, r.lead ?? undefined), r.what, r.target === 'group'), actions: [{ id: cancelId(String(r._id)), label: 'Batal', kind: 'secondary' }] } };
 }
 
 /** Scheduler: kirim pengingat yang sudah waktunya (diklaim atomik → tidak dobel). */
