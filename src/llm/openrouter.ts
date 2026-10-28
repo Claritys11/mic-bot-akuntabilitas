@@ -15,6 +15,12 @@ interface CompletionResponse {
 
 const MIN_MAX_TOKENS = 2000;
 
+class LLMEmptyError extends Error {
+  constructor() {
+    super('LLM mengembalikan respons kosong');
+  }
+}
+
 class LLMHttpError extends Error {
   constructor(
     readonly status: number,
@@ -64,7 +70,11 @@ export class OpenRouterProvider implements LLMProvider {
     // Semua sedang istirahat → tetap coba semuanya daripada langsung gagal.
     for (const a of ready.length ? ready : attempts) {
       try {
-        const out = await this.request(ep, a.model, a.key, messages, opts);
+        // Respons kosong biasanya gangguan sesaat di provider (terlihat ±6% di uji vision) → ulang sekali.
+        const out = await this.request(ep, a.model, a.key, messages, opts).catch((err: unknown) => {
+          if (err instanceof LLMEmptyError) return this.request(ep, a.model, a.key, messages, opts);
+          throw err;
+        });
         this.cooldown.delete(a.slot);
         return out;
       } catch (err) {
@@ -154,7 +164,7 @@ export class OpenRouterProvider implements LLMProvider {
     }
 
     const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error('LLM mengembalikan respons kosong');
+    if (!content) throw new LLMEmptyError();
     return content;
   }
 }

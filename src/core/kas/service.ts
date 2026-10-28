@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isValidObjectId, type InferSchemaType, type Types } from 'mongoose';
 import { z } from 'zod';
-import { GroupModel, KasProofModel, KasReminderModel, MemberModel, TransactionModel, type GroupDoc } from '../../db/models.ts';
+import { GroupModel, HeldProofModel, KasProofModel, KasReminderModel, MemberModel, TransactionModel, type GroupDoc } from '../../db/models.ts';
 import { kasProofPrompt } from '../../llm/prompts/kasProof.ts';
 import { visionJson, type LLMProvider } from '../../llm/provider.ts';
 import { kasText, PRIVATE_FALLBACK, type KasStage } from '../billing/templates.ts';
@@ -31,9 +31,15 @@ import { sheetMarker, spreadsheetIdOf, type KasSheetGateway } from './sheet.ts';
 import { sheetUrl, startButton, type SheetLinker } from './sheetLink.ts';
 import { allocatePayment, nextPeriod, paidStatus, previousPeriod, rateFor, periodKey, periodLabel, periodRange, rupiah, toCsv, type KasPeriod, type LedgerEntry, type Rate } from './ledger.ts';
 import { perceptualHash } from './phash.ts';
-import { FLAG_TEXT, normalizeRef, verifyProof, type ProofFlag } from './verify.ts';
+import { FLAG_TEXT, markReaderFailed, normalizeRef, UNREADABLE, verifyProof, type ProofFlag } from './verify.ts';
+import { heldReplyText, JokeLimiter, judgeImage, SEND_ANYWAY_LABEL } from './judge.ts';
 
 const ProofSchema = z.object({
+  jenis: z.enum(['bukti_transfer', 'nota_belanja', 'lainnya']).nullish().catch(null),
+  // Model kadang menulis persen (85) alih-alih 0.85.
+  yakin: z.preprocess((v) => (typeof v === 'number' && v > 1 && v <= 100 ? v / 100 : v), z.coerce.number().min(0).max(1)).nullish().catch(null),
+  deskripsi: z.string().nullish().catch(null),
+  balasan: z.string().nullish().catch(null),
   isTransferProof: z.boolean().default(true),
   nominal: z.coerce.number().nullish(),
   tanggal: z.string().nullish(),
@@ -48,6 +54,7 @@ const isImage = (a: Attachment) => (a.contentType ?? '').startsWith('image/') ||
 const ids = {
   approve: (id: string) => `k:ok:${id}`,
   reject: (id: string) => `k:no:${id}`,
+  send: (id: string) => `k:send:${id}`,
   form: (id: string) => `kf:ok:${id}`,
 };
 
@@ -116,70 +123,172 @@ const allocationText = (parts: { period: string; amount: number }[]) => parts.ma
 
 const isTreasurer = (g: GroupDoc, ctx: { isAdmin: boolean; actor: { platformUserId: string } }) => can(g, ctx, 'kas');
 
-/** Gambar di channel kas → ekstraksi vision → verifikasi → tunggu persetujuan bendahara. */
+/** Data satu gambar yang dibaca dari channel kas — cukup untuk menyimpan bukti sekarang atau nanti (gambar ditahan). */
+interface ProofInput {
+  platform: string;
+  groupId: string;
+  channelId: string;
+  member: { platformUserId: string; displayName: string };
+  imageHash: string;
+  imagePHash: string | null;
+  nominal: number | null;
+  tanggal: string | null;
+  bank: string | null;
+  sender: string | null;
+  penerima: string | null;
+  refId: string | null;
+  isTransferProof?: boolean | null;
+}
+
+// Kirim meme beruntun: maks 3 balasan per orang per 10 menit, setelah itu diam.
+const jokes = new JokeLimiter(3, 10 * 60_000);
+
+/** Gambar di channel kas → baca (vision) → nilai: bukti diteruskan ke bendahara, selain itu dibalas di tempat. */
 export async function handleKasProof(llm: LLMProvider, msg: IncomingMessage, group: GroupDoc): Promise<OutgoingMessage[]> {
   if (!msg.isDirect && (!group.kasChannelId || msg.channelId !== group.kasChannelId)) return [];
   const image = msg.attachments.find(isImage);
   if (!image) return [];
-  if ((image.size ?? 0) > MAX_PROOF_BYTES) {
-    return [{ to: { kind: 'channel', channelId: msg.channelId, replyTo: msg.id }, text: 'Gambarnya kegedean (maks 10 MB) 🙏 Coba kirim screenshot biasa ya.' }];
-  }
+  const here = { kind: 'channel' as const, channelId: msg.channelId, replyTo: msg.id };
+  if ((image.size ?? 0) > MAX_PROOF_BYTES) return [{ to: here, text: 'Gambarnya kegedean (maks 10 MB) 🙏 Coba kirim screenshot biasa ya.' }];
 
   const data = await image.getData();
-  const imageHash = createHash('sha256').update(data).digest('hex');
-  const imagePHash = perceptualHash(data);
   const at = now();
-  const extracted = await visionJson(llm, ProofSchema, kasProofPrompt(formatWIB(at)), {
-    data,
-    mimeType: image.contentType ?? 'image/jpeg',
-  });
-
-  const previous = await KasProofModel.find({ groupId: msg.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1, refHash: 1, nominal: 1, transferDate: 1, recipient: 1 }).lean();
-  const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
+  const level = group.speechLevel as SpeechLevel;
+  const extracted = await visionJson(llm, ProofSchema, kasProofPrompt(formatWIB(at), level), { data, mimeType: image.contentType ?? 'image/jpeg' });
   const clean = (v: string | null | undefined) => (v ? sanitize(v).slice(0, 100) : null);
-  const proof = {
-    nominal: extracted?.nominal ?? null,
-    tanggal: clean(extracted?.tanggal),
-    refId: clean(extracted?.refId),
-    imageHash,
-    imagePHash,
-    penerima: clean(extracted?.penerima),
-    isTransferProof: extracted?.isTransferProof,
-  };
-  const flags = verifyProof(proof, {
-    now: at,
-    amount: group.kas?.amount ?? 0,
-    period: kasPeriod,
-    seenHashes: new Set(previous.map((p) => p.imageHash)),
-    seenImages: previous
-      .filter((p) => p.imagePHash)
-      .map((p) => ({ pHash: p.imagePHash!, refKey: p.refHash ?? (p.refId ? refHashOf(p.refId) : null), nominal: p.nominal ?? null, tanggal: p.transferDate ?? null, penerima: p.recipient ?? null })),
-    recipients: group.kas?.recipients ?? [],
-    seenRefIds: new Set(previous.map((p) => p.refHash ?? (p.refId ? refHashOf(p.refId) : null)).filter((h): h is string => Boolean(h))),
-    refKey: refHashOf,
-  });
-
-  const transferAt = proof.tanggal?.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(`${proof.tanggal}T05:00:00Z`) : at;
-  const doc = await KasProofModel.create({
+  const input: ProofInput = {
     platform: msg.platform,
     groupId: msg.groupId,
     channelId: msg.channelId,
     member: { platformUserId: msg.author.platformUserId, displayName: msg.author.displayName },
-    imageHash,
-    imagePHash,
-    nominal: proof.nominal,
-    transferDate: proof.tanggal,
+    imageHash: createHash('sha256').update(data).digest('hex'),
+    imagePHash: perceptualHash(data),
+    nominal: extracted?.nominal ?? null,
+    tanggal: clean(extracted?.tanggal),
     bank: clean(extracted?.bank),
     sender: clean(extracted?.pengirim),
-    recipient: proof.penerima,
-    refId: proof.refId,
-    refHash: proof.refId ? refHashOf(proof.refId) : null,
+    penerima: clean(extracted?.penerima),
+    refId: clean(extracted?.refId),
+    isTransferProof: extracted?.isTransferProof,
+  };
+
+  const verdict = judgeImage(extracted);
+  if (verdict !== 'proof') {
+    if (!jokes.allow(`${msg.groupId}:${msg.author.platformUserId}`, at.getTime())) return [];
+    const held = await HeldProofModel.create({
+      platform: input.platform,
+      groupId: input.groupId,
+      channelId: input.channelId,
+      sourceMessageId: msg.id,
+      isDirect: Boolean(msg.isDirect),
+      member: input.member,
+      verdict,
+      imageHash: input.imageHash,
+      imagePHash: input.imagePHash,
+      nominal: input.nominal,
+      transferDate: input.tanggal,
+      bank: input.bank,
+      sender: input.sender,
+      recipient: input.penerima,
+      refId: input.refId,
+      isTransferProof: input.isTransferProof ?? null,
+    });
+    return [
+      {
+        to: here,
+        text: heldReplyText(verdict, level, { deskripsi: extracted?.deskripsi, balasan: extracted?.balasan }),
+        actions: [{ id: ids.send(String(held._id)), label: SEND_ANYWAY_LABEL[level], kind: 'secondary' }],
+      },
+    ];
+  }
+
+  const flags = await proofFlags(input, group, at);
+  const doc = await saveProof(input, llm.enabled && !extracted ? markReaderFailed(flags) : flags, group, at);
+  return deliverProof(doc, group, { replyTo: msg.id, isDirect: Boolean(msg.isDirect), sender: msg.author, readerOn: llm.enabled });
+}
+
+/** Tanda kejanggalan dibanding bukti-bukti sebelumnya (duplikat, ref, nominal, tanggal, penerima). */
+async function proofFlags(input: ProofInput, group: GroupDoc, at: Date): Promise<ProofFlag[]> {
+  const previous = await KasProofModel.find({ groupId: input.groupId, status: { $ne: 'rejected' } }, { imageHash: 1, imagePHash: 1, refId: 1, refHash: 1, nominal: 1, transferDate: 1, recipient: 1 }).lean();
+  return verifyProof(
+    { nominal: input.nominal, tanggal: input.tanggal, refId: input.refId, imageHash: input.imageHash, imagePHash: input.imagePHash, penerima: input.penerima, isTransferProof: input.isTransferProof ?? undefined },
+    {
+      now: at,
+      amount: group.kas?.amount ?? 0,
+      period: (group.kas?.period ?? 'bulanan') as KasPeriod,
+      seenHashes: new Set(previous.map((p) => p.imageHash)),
+      seenImages: previous
+        .filter((p) => p.imagePHash)
+        .map((p) => ({ pHash: p.imagePHash!, refKey: p.refHash ?? (p.refId ? refHashOf(p.refId) : null), nominal: p.nominal ?? null, tanggal: p.transferDate ?? null, penerima: p.recipient ?? null })),
+      recipients: group.kas?.recipients ?? [],
+      seenRefIds: new Set(previous.map((p) => p.refHash ?? (p.refId ? refHashOf(p.refId) : null)).filter((h): h is string => Boolean(h))),
+      refKey: refHashOf,
+    },
+  );
+}
+
+async function saveProof(input: ProofInput, flags: ProofFlag[], group: GroupDoc, at: Date): Promise<KasProofDoc> {
+  const kasPeriod = (group.kas?.period ?? 'bulanan') as KasPeriod;
+  const transferAt = input.tanggal?.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(`${input.tanggal}T05:00:00Z`) : at;
+  const doc = await KasProofModel.create({
+    platform: input.platform,
+    groupId: input.groupId,
+    channelId: input.channelId,
+    member: input.member,
+    imageHash: input.imageHash,
+    imagePHash: input.imagePHash,
+    nominal: input.nominal,
+    transferDate: input.tanggal,
+    bank: input.bank,
+    sender: input.sender,
+    recipient: input.penerima,
+    refId: input.refId,
+    refHash: input.refId ? refHashOf(input.refId) : null,
     flags,
     period: periodKey(transferAt > at ? at : transferAt, kasPeriod),
   });
-  await markKasDirty(msg.groupId);
-  return deliverProof(doc.toObject() as KasProofDoc, group, { replyTo: msg.id, isDirect: Boolean(msg.isDirect), sender: msg.author, readerOn: llm.enabled });
+  await markKasDirty(input.groupId);
+  return doc.toObject() as KasProofDoc;
 }
+
+/** "📨 Ini beneran bukti" — hanya pengirimnya. Gambar yang ditahan diteruskan ke bendahara dengan catatan. */
+async function sendHeldProof(ev: ActionEvent, id: string): Promise<Reply> {
+  const held = isValidObjectId(id) ? await HeldProofModel.findById(id).lean() : null;
+  if (!held) return { reply: { text: 'Gambar ini sudah kedaluwarsa (lebih dari sehari) — kirim ulang buktinya ya 🙏', private: true } };
+  if (held.member.platformUserId !== ev.actor.platformUserId) return { reply: { text: 'Tombol ini untuk yang mengirim gambarnya 🙏', private: true } };
+  const group = await getGroup(held.platform as Platform, held.groupId);
+  if (!group) return { reply: { text: NOT_SETUP_TEXT, private: true } };
+  const at = now();
+  // Klaim dulu (atomik) supaya klik dobel tidak membuat dua bukti.
+  if (!(await HeldProofModel.findOneAndUpdate({ _id: held._id, sentAt: null }, { $set: { sentAt: at } }))) return { reply: { text: 'Sudah diteruskan ke bendahara sebelumnya 👍', private: true } };
+  const input: ProofInput = {
+    platform: held.platform,
+    groupId: held.groupId,
+    channelId: held.channelId,
+    member: held.member,
+    imageHash: held.imageHash,
+    imagePHash: held.imagePHash ?? null,
+    nominal: held.nominal ?? null,
+    tanggal: held.transferDate ?? null,
+    bank: held.bank ?? null,
+    sender: held.sender ?? null,
+    penerima: held.recipient ?? null,
+    refId: held.refId ?? null,
+  };
+  // Catatan utama di atas; "tidak terbaca" dibuang (kolom kosong sudah terlihat di kartu).
+  const flags: ProofFlag[] = ['sent_anyway', ...(await proofFlags(input, group, at)).filter((f) => !UNREADABLE.includes(f))];
+  const doc = await saveProof(input, flags, group, at);
+  const level = group.speechLevel as SpeechLevel;
+  return {
+    update: { text: SENT_ANYWAY_TEXT[level], actions: [] },
+    messages: deliverProof(doc, group, { replyTo: held.sourceMessageId, isDirect: held.isDirect, sender: held.member, readerOn: true }).filter((m) => !m.onlyIfPreviousSent),
+  };
+}
+const SENT_ANYWAY_TEXT: Record<SpeechLevel, string> = {
+  santai: 'oke, ku terusin ke bendahara buat dicek ya 🙏',
+  sopan: 'Baik, sudah saya teruskan ke bendahara untuk dicek 🙏',
+  krama: 'Inggih, sampun kula aturaken dhateng bendahara 🙏',
+};
 
 type KasProofDoc = InferSchemaType<typeof KasProofModel.schema> & { _id: Types.ObjectId };
 
@@ -337,6 +446,8 @@ async function approve(proofId: string, nominal: number, ev: ActionEvent | FormS
 
 export async function handleKasAction(ev: ActionEvent): Promise<Reply> {
   const [, verb, id, extra] = ev.actionId.split(':');
+  // Bisa dari DM (groupId kosong) — kelas diambil dari data gambarnya.
+  if (verb === 'send') return sendHeldProof(ev, id ?? '');
   const group = await getGroup(ev.platform, ev.groupId);
   if (verb === 'cashno') return { update: { text: 'Dibatalkan — tidak ada yang dicatat.', card: undefined, actions: [] } };
   if (verb === 'cash') {

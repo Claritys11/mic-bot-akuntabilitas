@@ -15,7 +15,9 @@ export type ProofFlag =
   | 'date_out_of_period'
   | 'date_in_future'
   | 'date_unreadable'
-  | 'not_a_proof';
+  | 'not_a_proof'
+  | 'sent_anyway'
+  | 'reader_failed';
 
 export const FLAG_TEXT: Record<ProofFlag, string> = {
   duplicate_image: 'Gambar ini pernah dikirim sebelumnya',
@@ -29,6 +31,8 @@ export const FLAG_TEXT: Record<ProofFlag, string> = {
   date_in_future: 'Tanggal transfer di masa depan',
   date_unreadable: 'Tanggal tidak terbaca',
   not_a_proof: 'Gambar sepertinya bukan bukti transfer',
+  reader_failed: 'Pembaca gambar bot sedang gagal — nominal/tanggal/penerima belum dicek, mohon cek manual',
+  sent_anyway: 'Bot menilai ini bukan / belum tentu bukti transfer, tapi pengirim bilang ini bukti — cek teliti',
 };
 
 export interface ProofData {
@@ -70,6 +74,12 @@ export interface VerifyContext {
   seenRefIds: Set<string>;
   /** Ubah refId jadi kunci pembanding; default normalizeRef. Service memakai hash agar refId mentah tidak disimpan. */
   refKey?: (ref: string) => string;
+}
+
+export const UNREADABLE: ProofFlag[] = ['amount_unreadable', 'date_unreadable', 'recipient_unreadable'];
+/** Vision gagal → "tidak terbaca" bukan salah gambarnya; ganti dengan satu catatan yang jujur. */
+export function markReaderFailed(flags: ProofFlag[]): ProofFlag[] {
+  return [...flags.filter((f) => !UNREADABLE.includes(f)), 'reader_failed'];
 }
 
 export const normalizeRef = (ref: string) => ref.replace(/\s+/g, '').toLowerCase();

@@ -5,6 +5,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Kas: bot menilai gambar sebelum melapor ke tim inti. Meme/foto lain dibalas candaan sesuai tingkat tutur (komentar soal gambarnya, bukan orangnya); nota belanja diarahkan ke `/kas keluar`; gambar buram/ragu diminta ulang. Hanya bukti yang yakin diteruskan. Pengirim selalu bisa klik **📨 Ini beneran bukti** (diteruskan dengan catatan untuk tim inti). Gambar yang ditahan terhapus sendiri setelah 24 jam; maks. 3 balasan candaan per orang per 10 menit. Uji berulang dengan model vision sungguhan: 32/32 penilaian sesuai harapan.
 - **🙋 Ingetin aku juga** di pesan pengingat aktif: teman sekelas ikut diingatkan (pengingat kelas → di-mention di pengumumannya; pengingat pribadi → DM masing-masing). Klik lagi untuk keluar; maks. 25 orang; pesan hanya menampilkan jumlah.
 - Janji yang lama lewat deadline: hari ke-4 ditanya terakhir kali lewat DM (✅ Udah kelar / ✏️ Ubah / 🗑️ Udah nggak perlu); tanpa jawaban 3 hari → status `stale`, keluar dari daftar & rangkuman tanpa diumumkan. Tetap dihitung tidak ditepati di skor kelas & metrik pilot. Ubah deadline → aktif lagi dan tindak lanjut dimulai ulang.
 - Tampilan laporan Google Sheets: Rupiah (format angka Indonesia, tetap bisa dijumlah), header berwarna, baris belang, filter, warna status (Lunas/Disetujui hijau, Menunggu kuning, Kurang/Ditolak merah), lebar kolom tetap + teks panjang dibungkus, Ringkasan bergaya dasbor dengan panduan "Cara pakai", peringatan Google saat tab buatan bot diedit.
@@ -32,6 +33,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 - Prioritas: pilot (M6) sebelum Fase 2; Fase 2 dibekukan sampai ada data.
 
 ### Diperbaiki
+- Respons kosong sesaat dari LLM (±6% panggilan vision) langsung dianggap gagal → sekarang dicoba ulang sekali di key yang sama. Kalau tetap gagal, kartu bukti menulis "pembaca gambar bot gagal — cek manual", bukan "nominal/tanggal tidak terbaca".
 - Uji dengan Google sungguhan: kode locale `id_ID` ditolak Sheets API → coba `in_ID`/`id_ID`, lalu bawaan akun.
 - Kelas yang mengatur kas sebelum fitur Sheets ada tidak pernah ditawari laporan (kolom `setAt` kosong).
 - Pengingat tanpa jam (_"jangan lupa besok ulangan"_, `/ingetin kapan:jumat`) dulu dijadwalkan 20.00 di hari acaranya — setelah acaranya lewat. Sekarang malam sebelumnya 19.00 (sudah lewat → 06.00 hari itu), dengan keterangan di tawaran & konfirmasi.

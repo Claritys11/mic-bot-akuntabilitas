@@ -166,6 +166,34 @@ KasProofSchema.index({ groupId: 1, refId: 1 });
 KasProofSchema.index({ groupId: 1, refHash: 1 });
 export const KasProofModel = mongoose.model('KasProof', KasProofSchema);
 
+// ---------- Kas: gambar yang ditahan (bukan / belum tentu bukti transfer) ----------
+// Tidak masuk KasProof supaya tidak dihitung sebagai "pernah dikirim" saat dikirim ulang. Pengirim bisa
+// meneruskannya ke bendahara ("Ini beneran bukti"); selain itu terhapus sendiri setelah 24 jam.
+export const HELD_PROOF_TTL_SECONDS = 24 * 3600;
+const HeldProofSchema = new Schema({
+  platform: { type: String, required: true },
+  groupId: { type: String, required: true },
+  channelId: { type: String, required: true },
+  sourceMessageId: { type: String, required: true },
+  isDirect: { type: Boolean, default: false },
+  member: { type: MemberRef, required: true },
+  verdict: { type: String, enum: ['not_proof', 'receipt', 'unsure'], required: true },
+  imageHash: { type: String, required: true },
+  imagePHash: { type: String, default: null },
+  nominal: { type: Number, default: null },
+  transferDate: { type: String, default: null },
+  bank: { type: String, default: null },
+  sender: { type: String, default: null },
+  recipient: { type: String, default: null },
+  refId: { type: String, default: null },
+  isTransferProof: { type: Boolean, default: null },
+  // Sudah diteruskan ke bendahara ("Ini beneran bukti") — klaim atomik supaya klik dobel tidak membuat dua bukti.
+  sentAt: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now },
+});
+HeldProofSchema.index({ createdAt: 1 }, { expireAfterSeconds: HELD_PROOF_TTL_SECONDS });
+export const HeldProofModel = mongoose.model('HeldProof', HeldProofSchema);
+
 // ---------- Kas: ledger (append-only) ----------
 const TransactionSchema = new Schema(
   {

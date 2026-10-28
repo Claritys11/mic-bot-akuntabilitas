@@ -52,7 +52,7 @@ dicari/dibuatkan otomatis, privat). Selesai — tidak perlu hafal perintah.
 | *"ada tugas gak?"* · *"kas aku udah lunas?"* · *"ada lomba ga?"* | dijawab dari catatan |
 | *"@MIC ingetin aku besok jam 7 bawa proyektor"* | diingatkan lewat DM tepat waktunya |
 | *"jangan lupa besok bawa kartu pelajar ya"* (tanpa tag) | bot menawarkan diri: **⏰ Iya, ingetin** / **Nggak usah** — baru aktif setelah diiyakan penulisnya; teman lain bisa klik **🙋 Ingetin aku juga** |
-| foto bukti transfer di channel kas | dicek bendahara di `#tim-inti`, hasilnya dikabari lewat DM |
+| foto bukti transfer di channel kas | bot menilai dulu: bukti asli → dicek bendahara di `#tim-inti` (hasil lewat DM); meme/foto lain → dibalas santai di tempat; nota belanja → diarahkan ke `/kas keluar`; buram → minta ulang. Salah nilai? pengirim klik **📨 Ini beneran bukti** |
 | *"@MIC ada lomba nih https://…"* | bot membaca halamannya, pengurus tinggal klik 💾 Simpan |
 | *"@MIC bisa apa aja?"* atau `/bantuan` | panduan singkat |
 

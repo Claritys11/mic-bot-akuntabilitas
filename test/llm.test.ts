@@ -49,6 +49,20 @@ describe('fallback model × key', () => {
     expect(calls).toEqual(['paid|k1', 'paid|k2', 'free|k1', 'free|k1']);
   });
 
+  test('respons kosong sesaat → dicoba ulang sekali di key yang sama dulu', async () => {
+    let n = 0;
+    const calls = mockFetch(() => (++n === 1 ? ok('') : ok('{"a":1}')));
+    expect(await provider().chat([{ role: 'user', content: 'hi' }])).toBe('{"a":1}');
+    expect(calls).toEqual(['paid|k1', 'paid|k1']);
+  });
+
+  test('kosong terus → pindah key, tidak mengulang tanpa batas', async () => {
+    const calls = mockFetch(() => ok(''));
+    expect(provider().chat([{ role: 'user', content: 'hi' }])).rejects.toThrow('kosong');
+    await Bun.sleep(5);
+    expect(calls).toEqual(['paid|k1', 'paid|k1', 'paid|k2', 'paid|k2', 'free|k1', 'free|k1', 'free|k2', 'free|k2']);
+  });
+
   test('semua gagal → lempar error (pemanggil yang menangani)', async () => {
     mockFetch(() => err(500));
     expect(provider().chat([{ role: 'user', content: 'a' }])).rejects.toThrow('LLM HTTP 500');

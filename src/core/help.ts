@@ -18,7 +18,7 @@ export function helpText(ctx: HelpContext): string {
     '• **Janji** — _"aku yang bikin PPT, jumat"_ → aku catat & ingetin sebelum deadline. Salah tangkap? balas _"bukan"_.',
     '• **Tanya** — _"ada tugas gak?"_, _"kas aku udah lunas?"_, _"ada lomba ga?"_',
     '• **Pengingat** — _"@MIC ingetin aku besok jam 7 bawa proyektor"_ (atau _"ingetin kita senin …"_ buat sekelas). Tanpa tag pun, _"jangan lupa besok …"_ / _"takut lupa …"_ → aku tawarin ngingetin. Mau ikut diingetin juga? klik **🙋 Ingetin aku juga**.',
-    `• **Bayar kas** — kirim foto bukti transfer ${kas}, bendahara yang ngecek.`,
+    `• **Bayar kas** — kirim foto bukti transfer ${kas}, bendahara yang ngecek. Bukan bukti (meme, nota)? aku bilang di tempat, nggak ku terusin.`,
     '• **Info lomba** — kirim link lombanya sambil tag aku, nanti aku bacakan.',
     '',
     `**Perintah cadangan:** /janji list · /kas rekap · /lomba list · /ingetin · /rangkum · /data hapus-saya`,
