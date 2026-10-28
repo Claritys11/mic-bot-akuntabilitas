@@ -18,7 +18,7 @@ import { can } from './team/roles.ts';
 import { timHapus, timLihat, timTambah } from './team/service.ts';
 import { collectFollowUps, collectNudges, collectWeeklyDigests } from './followup/service.ts';
 import { pilotEkspor, pilotMode } from './pilot/service.ts';
-import { collectReminders, handleReminderAction, handleReminderRequest, ingetinCommand } from './reminders/service.ts';
+import { collectReminders, handleReminderAction, handleReminderRequest, ingetinCommand, offerReminder } from './reminders/service.ts';
 import { dataHapusAnggota, dataHapusKelas, dataHapusSaya, handleDataAction } from './privacy/service.ts';
 import { bufferMessage, rangkum } from './summary/service.ts';
 import { formatWIB, now, timeScale } from './time.ts';
@@ -182,6 +182,9 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
       // Janji dulu (paling penting dicatat); kalau bukan janji, mungkin pertanyaan / sapaan ke bot.
       const promise = await detectPromise(llm, msg, group);
       if (promise.length) return promise;
+      // "jangan lupa besok bawa…" tanpa tag → bot menawarkan diri mengingatkan.
+      const offer = await offerReminder(msg, group);
+      if (offer) return offer;
       return answerQuestion(llm, msg, group);
     },
 

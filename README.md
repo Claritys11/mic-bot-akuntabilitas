@@ -51,6 +51,7 @@ dicari/dibuatkan otomatis, privat). Selesai — tidak perlu hafal perintah.
 | *"aku yang bikin PPT, jumat"* | dicatat & diingatkan H-2 → H-0; kalau lewat, ditanya kabarnya lewat DM |
 | *"ada tugas gak?"* · *"kas aku udah lunas?"* · *"ada lomba ga?"* | dijawab dari catatan |
 | *"@MIC ingetin aku besok jam 7 bawa proyektor"* | diingatkan lewat DM tepat waktunya |
+| *"jangan lupa besok bawa kartu pelajar ya"* (tanpa tag) | bot menawarkan diri: **⏰ Iya, ingetin** / **Nggak usah** — baru aktif setelah diiyakan penulisnya |
 | foto bukti transfer di channel kas | dicek bendahara di `#tim-inti`, hasilnya dikabari lewat DM |
 | *"@MIC ada lomba nih https://…"* | bot membaca halamannya, pengurus tinggal klik 💾 Simpan |
 | *"@MIC bisa apa aja?"* atau `/bantuan` | panduan singkat |

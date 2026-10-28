@@ -5,6 +5,8 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Bot menawarkan diri mengingatkan tanpa perlu di-tag: obrolan seperti _"jangan lupa besok …"_, _"takut lupa …"_, _"ingetin aku ya besok …"_ (ada waktunya) → tombol **⏰ Iya, ingetin / Nggak usah**; aktif hanya setelah diiyakan penulisnya (pengingat kelas boleh juga oleh admin). Maks. satu tawaran per kelas tiap 5 menit.
+- Indikator "sedang mengetik…" sebelum setiap balasan (Discord & WhatsApp); saat di-tag, tampil selama bot berpikir.
 - Bot yang memulai laporan kas Google Sheets: tawaran sekali ke tim inti/bendahara → tombol → login Google lewat kode (`google.com/device`) → sheet dibuat di Drive bendahara (scope `drive.file`), link via DM. Token tersegel AES-256-GCM, dicabut saat `/kas sheet link:putus`; berhenti menulis kalau pemilik bukan pengurus kas lagi.
 - Laporan kas otomatis di Google Sheets (`/kas sheet`), pencatatan pengeluaran & pemasukan lain (`/kas keluar`, `/kas masuk`).
 - Bendahara bisa orang (DM) atau channel `#tim-inti` (dicari, dibuatkan privat kalau belum ada); tim inti eksplisit (`tambah_tim`/`hapus_tim`).

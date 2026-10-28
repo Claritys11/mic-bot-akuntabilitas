@@ -18,6 +18,7 @@ import type { Core } from '../../core/index.ts';
 import { mention, type Attachment, type Context, type IncomingMessage, type Member, type MessageBody, type OutgoingMessage, type Reply, type Sender } from '../../core/types.ts';
 import { MemberModel, WaPromptModel, type WaPromptDoc } from '../../db/models.ts';
 import { sendAll } from '../sendAll.ts';
+import { typingChannel, typingDelayMs } from '../typing.ts';
 import { jidUser, matchChoice, parseCommand, parseFormReply, renderBodyWa, renderFormWa } from './format.ts';
 
 // Adapter WhatsApp lewat Baileys (WhatsApp Web multi-device, tidak resmi).
@@ -354,8 +355,22 @@ export function createWhatsAppAdapter(core: Core, opts: WhatsAppOptions): WhatsA
       attachments: await attachmentsOf(m, content),
     };
     if (!incoming.text && !incoming.attachments.length) return;
+    // Di-tag / chat pribadi → hampir pasti dijawab: "mengetik…" selagi berpikir.
+    const composing = (jid: string) => connected().then((c) => c.sendPresenceUpdate('composing', jid)).catch(() => undefined);
+    const startedAt = Date.now();
+    const thinking = incoming.mentionsBot || incoming.isDirect;
+    if (thinking) void composing(chatId);
     const out = await core.onMessage(incoming);
-    await sendAll(sender, out, 'whatsapp');
+    let typedMs = thinking ? Date.now() - startedAt : 0;
+    await sendAll(sender, out, 'whatsapp', {
+      beforeSend: async (mm) => {
+        const jid = typingChannel(mm);
+        if (!jid) return;
+        await composing(jid);
+        await sleep(typingDelayMs(mm.text, typedMs));
+        typedMs = 0;
+      },
+    });
   }
 
   // ---------- Grup: sapa saat masuk, sinkron anggota ----------

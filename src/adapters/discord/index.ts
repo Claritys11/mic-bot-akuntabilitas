@@ -25,6 +25,7 @@ import { upsertMembers } from '../../core/groups.ts';
 import type { Core } from '../../core/index.ts';
 import type { Context, IncomingMessage, Member, OptionValue, OutgoingMessage, Reply, Sender } from '../../core/types.ts';
 import { sendAll } from '../sendAll.ts';
+import { sleep, typingChannel, typingDelayMs } from '../typing.ts';
 import { renderBody, renderModal } from './render.ts';
 
 const ADMIN = PermissionFlagsBits.ManageGuild;
@@ -428,10 +429,27 @@ export function createDiscordAdapter(core: Core, opts: { token: string; guildId?
 
   client.on(Events.MessageCreate, async (msg) => {
     if (msg.author.bot || !msg.inGuild()) return;
+    const incoming = toIncoming(msg);
+    // Di-tag/dibalas → hampir pasti dijawab: tampilkan "mengetik…" selagi berpikir (LLM bisa beberapa detik).
+    // Indikator Discord hilang sendiri setelah ~10 detik, jadi diperbarui berkala.
+    const startedAt = Date.now();
+    const thinking = incoming.mentionsBot ? setInterval(() => void msg.channel.sendTyping().catch(() => undefined), 8000) : undefined;
+    if (thinking) void msg.channel.sendTyping().catch(() => undefined);
     try {
-      const out = await core.onMessage(toIncoming(msg));
+      const out = await core.onMessage(incoming).finally(() => clearInterval(thinking));
+      let typedMs = thinking ? Date.now() - startedAt : 0;
       // Satu pesan gagal (mis. izin channel) tidak boleh menggugurkan pesan lain di giliran yang sama.
-      await sendAll(sender, out, 'discord');
+      await sendAll(sender, out, 'discord', {
+        beforeSend: async (m) => {
+          const channelId = typingChannel(m);
+          if (!channelId) return;
+          const ch = channelId === msg.channelId ? msg.channel : await client.channels.fetch(channelId);
+          if (!ch?.isSendable()) return;
+          await ch.sendTyping();
+          await sleep(typingDelayMs(m.text, typedMs));
+          typedMs = 0;
+        },
+      });
     } catch (err) {
       console.error('[discord] gagal memproses pesan:', err);
     }

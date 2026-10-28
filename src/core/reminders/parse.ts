@@ -21,14 +21,40 @@ export function parseReminderRequest(text: string, now: Date): ReminderRequest |
   if (!m) return null;
   const after = text.slice(m.index! + m[0].length);
   const target = GROUP_WORDS.test(after.split(/\s+/).slice(0, 3).join(' ')) ? 'group' : 'self';
-  const parsed = parseRelativeDate(after, now);
-  const what = after
+  return build(after, target, now);
+}
+
+// Obrolan biasa yang menandakan butuh diingatkan, tanpa men-tag bot:
+// "jangan lupa besok bawa kartu pelajar" (ke teman sekelas) / "takut lupa, besok jam 7 piket".
+const REMIND_OTHERS = /\b(?:jangan|jgn|ojo|aja)\s+(?:sampai\s+|sampe\s+)?(?:lupa|lali)\b/i;
+const REMIND_SELF = /\b(?:takut|sering|suka|gampang)\s+(?:lupa|lali)\b|\b(?:biar|supaya|ben)\s+(?:gak|nggak|ga|ngga|enggak|tidak|ndak|ora)\s+(?:lupa|lali)\b|\blupa\s+terus\b/i;
+
+/**
+ * Pesan tanpa tag yang pantas ditawari pengingat → isi tawarannya. Hanya kalau waktunya jelas di masa
+ * depan; tanpa waktu, menawarkan cuma jadi bising (bot terpaksa bertanya balik).
+ */
+export function detectReminderOffer(text: string, now: Date): ReminderRequest | null {
+  const explicit = parseReminderRequest(text, now);
+  if (explicit) return explicit.at ? explicit : null;
+  const m = text.match(REMIND_SELF) ?? text.match(REMIND_OTHERS);
+  if (!m) return null;
+  const target = REMIND_SELF.test(text) ? 'self' : 'group';
+  // "besok ulangan, takut lupa" → isi ada sebelum pemicunya.
+  const after = text.slice(m.index! + m[0].length);
+  const fragment = /[\p{L}\d]/u.test(after.replace(TIME_PHRASES, ' ').replace(/\b(?:ya|yah|dong|deh|guys|gaes|rek|cuy)\b/gi, ' ')) ? after : text.slice(0, m.index!);
+  const r = build(fragment, target, now, text);
+  return r?.at ? r : null;
+}
+
+function build(fragment: string, target: 'self' | 'group', now: Date, whole = fragment): ReminderRequest | null {
+  const parsed = parseRelativeDate(whole, now);
+  const what = fragment
     .replace(/^\s*(?:aku|saya|gue|gw|ku|kita|kami|kelas|semua(?:nya)?|anak-anak|teman-teman|temen-temen|grup)\b/i, '')
     .replace(TIME_PHRASES, ' ')
     .replace(/\b(?:ya|yah|dong|deh|tolong|please|pls|buat|untuk|soal|kalau|kalo|biar|supaya|bahwa|tentang)\b/gi, (w, offset: number) => (offset < 3 ? ' ' : w))
     .replace(/^[\s,.:;-]*(?:buat|untuk|soal|tentang|kalau|kalo|biar|supaya)?\s*/i, '')
     .replace(/\s+/g, ' ')
-    .replace(/[\s,.;:!?-]+$/, '')
+    .replace(/(?:[\s,.;:!?-]+(?:ya|yah|dong|deh|aku|saya|gue|guys|gaes|rek|cuy|oke?))*[\s,.;:!?-]*$/i, '')
     .trim();
   if (!what) return null;
   return { target, what: what.slice(0, 200), at: parsed && parsed.date > now ? parsed.date : null };

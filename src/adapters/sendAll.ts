@@ -4,7 +4,7 @@ import type { OutgoingMessage, Sender } from '../core/types.ts';
  * Kirim berurutan. Satu pesan gagal tidak menggugurkan yang lain, KECUALI pesan yang menandai
  * `onlyIfPreviousSent` — itu diganti `elseText` (kalau ada) supaya bot tidak mengklaim hal yang gagal.
  */
-export async function sendAll(sender: Sender, messages: OutgoingMessage[], tag: string): Promise<number> {
+export async function sendAll(sender: Sender, messages: OutgoingMessage[], tag: string, opts: { beforeSend?: (m: OutgoingMessage) => Promise<void> } = {}): Promise<number> {
   let previousOk = true;
   let sent = 0;
   for (const m of messages) {
@@ -15,6 +15,8 @@ export async function sendAll(sender: Sender, messages: OutgoingMessage[], tag: 
       continue;
     }
     try {
+      // Indikator "mengetik" gagal tidak boleh menggagalkan pesannya.
+      if (opts.beforeSend) await opts.beforeSend(msg).catch(() => undefined);
       await sender.send(msg);
       previousOk = msg === m;
       sent++;

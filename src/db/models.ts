@@ -367,6 +367,8 @@ const ReminderSchema = new Schema(
     at: { type: Date, required: true },
     sentAt: { type: Date, default: null },
     cancelled: { type: Boolean, default: false },
+    // Ditawarkan bot dari obrolan biasa, belum diterima pemiliknya → tidak dikirim.
+    offered: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
