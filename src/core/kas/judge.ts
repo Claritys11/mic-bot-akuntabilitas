@@ -26,11 +26,18 @@ const PAYMENT_HINT =
 /** Kalimat candaan buatan LLM: dipakai hanya kalau pendek & aman, selain itu null (pakai template). */
 export function acceptJokeLine(line: string | null | undefined): string | null {
   if (!line) return null;
-  const t = sanitize(line).replace(/\s+/g, ' ').trim();
+  // Normalisasi dulu: angka lebar penuh (０８１２) jadi ASCII, karakter tak terlihat (zero-width) dibuang.
+  const t = sanitize(line).normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/g, ' ').trim();
   if (t.length < 4 || t.length > 220) return null;
-  if (/https?:|www\.|@|<[@#!&]|\d|\b[\w-]+\.[a-z]{2,}\b/i.test(t) || PAYMENT_HINT.test(t)) return null;
+  // Allowlist: hanya huruf Latin, tanda baca dasar, dan emoji — angka (aksara apa pun), huruf mirip dari
+  // aksara lain (е Sirilik di "rеkening"), dan simbol lain langsung ditolak.
+  if (!JOKE_CHARS.test(t)) return null;
+  // Cek kata pembayaran setelah aksen dilucuti ("rekéning" → "rekening").
+  const plain = t.normalize('NFD').replace(/\p{M}/gu, '');
+  if (/https?|www\.|\b[a-z-]+\.[a-z]{2,}\b/i.test(plain) || PAYMENT_HINT.test(plain)) return null;
   return t;
 }
+const JOKE_CHARS = /^[\p{Script=Latin}\p{M} .,!?'"()\-–—:;~…\p{Extended_Pictographic}\u{FE0F}\p{Emoji_Modifier}]+$/u;
 
 const FALLBACK: Record<Exclude<ImageVerdict, 'proof'>, Record<SpeechLevel, (desc: string | null) => string>> = {
   not_proof: {

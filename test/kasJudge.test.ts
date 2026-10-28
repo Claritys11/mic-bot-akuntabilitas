@@ -43,6 +43,14 @@ describe('balasan untuk gambar yang ditahan', () => {
     expect(acceptJokeLine('kirim kode OTP-nya ke admin ya')).toBeNull();
     expect(acceptJokeLine('cek bayarkas.id dulu deh')).toBeNull();
     expect(acceptJokeLine('iuran 10 ribu ya')).toBeNull();
+    // Lolos dari filter ASCII: angka lebar penuh, zero-width di tengah kata, huruf Sirilik, aksen.
+    expect(acceptJokeLine('wkwk transfer aja ke ０８１２３４')).toBeNull();
+    expect(acceptJokeLine('kucingnya lucu, isi rek\u200Bening dulu ya')).toBeNull();
+    expect(acceptJokeLine('kucingnya lucu, cek r\u0435kening admin ya')).toBeNull();
+    expect(acceptJokeLine('kucingnya lucu, cek rekéning admin ya')).toBeNull();
+    expect(acceptJokeLine('wkwk ٨١٢ aja')).toBeNull();
+    // Krama beraksen & emoji berkulit tetap boleh.
+    expect(acceptJokeLine('Gambaripun kados wallpaper lawas ingkang éndah 🙏🏽')).not.toBeNull();
     // Candaan biasa tetap lolos ("kirim screenshot transfer" bukan tujuan pembayaran).
     expect(acceptJokeLine('wkwk kucingnya tidur, kirim screenshot transfer yang asli ya 😹')).not.toBeNull();
   });
