@@ -48,10 +48,10 @@ dicari/dibuatkan otomatis, privat). Selesai — tidak perlu hafal perintah.
 
 | Ketik di grup | Yang terjadi |
 |---|---|
-| *"aku yang bikin PPT, jumat"* | dicatat & diingatkan H-2 → H-0; kalau lewat, ditanya kabarnya lewat DM |
+| *"aku yang bikin PPT, jumat"* | dicatat & diingatkan H-2 → H-0; kalau lewat, ditanya kabarnya lewat DM (hari ke-1 & ke-4); tanpa kabar seminggu → dirapikan dari daftar tanpa diumumkan |
 | *"ada tugas gak?"* · *"kas aku udah lunas?"* · *"ada lomba ga?"* | dijawab dari catatan |
 | *"@MIC ingetin aku besok jam 7 bawa proyektor"* | diingatkan lewat DM tepat waktunya |
-| *"jangan lupa besok bawa kartu pelajar ya"* (tanpa tag) | bot menawarkan diri: **⏰ Iya, ingetin** / **Nggak usah** — baru aktif setelah diiyakan penulisnya |
+| *"jangan lupa besok bawa kartu pelajar ya"* (tanpa tag) | bot menawarkan diri: **⏰ Iya, ingetin** / **Nggak usah** — baru aktif setelah diiyakan penulisnya; teman lain bisa klik **🙋 Ingetin aku juga** |
 | foto bukti transfer di channel kas | dicek bendahara di `#tim-inti`, hasilnya dikabari lewat DM |
 | *"@MIC ada lomba nih https://…"* | bot membaca halamannya, pengurus tinggal klik 💾 Simpan |
 | *"@MIC bisa apa aja?"* atau `/bantuan` | panduan singkat |

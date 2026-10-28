@@ -5,6 +5,8 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- **🙋 Ingetin aku juga** di pesan pengingat aktif: teman sekelas ikut diingatkan (pengingat kelas → di-mention di pengumumannya; pengingat pribadi → DM masing-masing). Klik lagi untuk keluar; maks. 25 orang; pesan hanya menampilkan jumlah.
+- Janji yang lama lewat deadline: hari ke-4 ditanya terakhir kali lewat DM (✅ Udah kelar / ✏️ Ubah / 🗑️ Udah nggak perlu); tanpa jawaban 3 hari → status `stale`, keluar dari daftar & rangkuman tanpa diumumkan. Tetap dihitung tidak ditepati di skor kelas & metrik pilot. Ubah deadline → aktif lagi dan tindak lanjut dimulai ulang.
 - Tampilan laporan Google Sheets: Rupiah (format angka Indonesia, tetap bisa dijumlah), header berwarna, baris belang, filter, warna status (Lunas/Disetujui hijau, Menunggu kuning, Kurang/Ditolak merah), lebar kolom tetap + teks panjang dibungkus, Ringkasan bergaya dasbor dengan panduan "Cara pakai", peringatan Google saat tab buatan bot diedit.
 - Bot menawarkan diri mengingatkan tanpa perlu di-tag: obrolan seperti _"jangan lupa besok …"_, _"takut lupa …"_, _"ingetin aku ya besok …"_ (ada waktunya) → tombol **⏰ Iya, ingetin / Nggak usah**; aktif hanya setelah diiyakan penulisnya (pengingat kelas boleh juga oleh admin). Maks. satu tawaran per kelas tiap 5 menit.
 - Indikator "sedang mengetik…" sebelum setiap balasan (Discord & WhatsApp); saat di-tag, tampil selama bot berpikir.

@@ -29,6 +29,11 @@ describe('metrik pilot', () => {
     expect(m.kas).toEqual({ approved: 2, approvedTotal: 30000, rejected: 1, flagged: 2, pending: 0 });
   });
 
+  test('janji yang dirapikan (stale) tetap dihitung tidak ditepati', () => {
+    const m = pilotMetrics([row({ status: 'stale', deadline: d('2026-11-06T13:00:00Z') }), row({ status: 'done', deadline: d('2026-11-05T13:00:00Z'), doneAt: d('2026-11-05T10:00:00Z') })], [], NOW);
+    expect(m).toMatchObject({ recorded: 2, due: 2, onTime: 1, missed: 1, keptPct: 50 });
+  });
+
   test('belum ada data → null, bukan 0%', () => {
     const m = pilotMetrics([], [], NOW);
     expect(m.keptPct).toBeNull();

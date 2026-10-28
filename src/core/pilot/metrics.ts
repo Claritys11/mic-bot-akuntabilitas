@@ -41,7 +41,8 @@ export interface PilotMetrics {
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
 
 export function pilotMetrics(promises: PromiseRow[], proofs: ProofRow[], now: Date): PilotMetrics {
-  const tracked = promises.filter((p) => ['active', 'done', 'overdue'].includes(p.status));
+  // stale (dirapikan / "udah nggak perlu" setelah lewat) tetap dihitung: merapikan tidak boleh mempercantik skor.
+  const tracked = promises.filter((p) => ['active', 'done', 'overdue', 'stale'].includes(p.status));
   const due = tracked.filter((p) => p.deadline && p.deadline <= now);
   let onTime = 0;
   let late = 0;

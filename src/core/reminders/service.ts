@@ -4,7 +4,7 @@ import { PRIVATE_FALLBACK } from '../billing/templates.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { parseRelativeDate } from '../promises/dateParser.ts';
 import { formatWIB, now } from '../time.ts';
-import { mention, type ActionEvent, type CommandInvocation, type IncomingMessage, type Member, type OutgoingMessage, type Platform, type Reply, type SpeechLevel } from '../types.ts';
+import { mention, type Action, type ActionEvent, type CommandInvocation, type IncomingMessage, type Member, type OutgoingMessage, type Platform, type Reply, type SpeechLevel } from '../types.ts';
 import { detectReminderOffer, looksLikeReminderRequest, parseReminderRequest, reminderTime } from './parse.ts';
 
 // Bot sebagai teman yang bisa dititipi pengingat: "@MIC ingetin aku besok jam 7 bawa proyektor".
@@ -16,6 +16,9 @@ const OFFER_COOLDOWN_MS = 5 * 60_000;
 
 const cancelId = (id: string) => `r:no:${id}`;
 const acceptId = (id: string) => `r:ok:${id}`;
+const joinId = (id: string) => `r:me:${id}`;
+// Batas yang ikut "🙋 Ingetin aku juga" per pengingat (pengingat pribadi → satu DM per orang).
+export const MAX_SUBSCRIBERS = 25;
 const ACTIVE = { sentAt: null, cancelled: false, offered: { $ne: true } };
 
 const CONFIRM: Record<SpeechLevel, (when: string, what: string, group: boolean) => string> = {
@@ -45,6 +48,26 @@ const OFFER_LABELS: Record<SpeechLevel, [string, string]> = {
   sopan: ['⏰ Ya, ingatkan', 'Tidak perlu'],
   krama: ['⏰ Inggih', 'Mboten'],
 };
+const JOIN_LABEL: Record<SpeechLevel, string> = { santai: '🙋 Ingetin aku juga', sopan: '🙋 Ingatkan saya juga', krama: '🙋 Kula ugi' };
+const JOINED_NOTE: Record<SpeechLevel, (n: number) => string> = {
+  santai: (n) => `🙋 ${n} orang ikut diingetin`,
+  sopan: (n) => `🙋 ${n} orang ikut diingatkan`,
+  krama: (n) => `🙋 ${n} tiyang tumut dipunengetaken`,
+};
+const JOINED_DELIVER: Record<SpeechLevel, (who: string, what: string) => string> = {
+  santai: (who, what) => `⏰ ${who}, kamu minta ikut diingetin: **${what}**`,
+  sopan: (who, what) => `⏰ ${who}, sesuai permintaan Anda untuk ikut diingatkan: **${what}**`,
+  krama: (who, what) => `⏰ Nuwun sewu ${who}, panjenengan nyuwun tumut dipunengetaken: **${what}**`,
+};
+
+/** Tombol pengingat aktif. Di channel ada "🙋 Ingetin aku juga"; balasan privat cukup "Batal". */
+function liveActions(id: string, level: SpeechLevel, inChannel: boolean): Action[] {
+  const cancel: Action = { id: cancelId(id), label: 'Batal', kind: 'secondary' };
+  return inChannel ? [{ id: joinId(id), label: JOIN_LABEL[level], kind: 'primary' }, cancel] : [cancel];
+}
+const liveText = (r: Pick<ReminderDoc, 'at' | 'what' | 'target' | 'lead' | 'subscribers'>, level: SpeechLevel) =>
+  CONFIRM[level](whenText(r.at, level, r.lead ?? undefined), r.what, r.target === 'group') + (r.subscribers?.length ? `\n${JOINED_NOTE[level](r.subscribers.length)}` : '');
+
 const DELIVER: Record<SpeechLevel, (who: string, what: string, group: boolean) => string> = {
   santai: (who, what, group) => (group ? `📢 Pengingat dari ${who} buat semuanya: **${what}**` : `⏰ ${who}, kamu minta diingetin: **${what}**`),
   sopan: (who, what, group) => (group ? `📢 Pengingat dari ${who} untuk kelas: **${what}**` : `⏰ ${who}, sesuai permintaan Anda: **${what}**`),
@@ -77,7 +100,7 @@ export async function handleReminderRequest(msg: IncomingMessage, group: GroupDo
   const target = msg.isDirect ? 'self' : req.target;
   const r = await create({ platform: msg.platform, groupId: msg.groupId, channelId: msg.isDirect ? (group.mainChannelId ?? msg.channelId) : msg.channelId, member: msg.author, target, what: req.what, at: req.at, lead: req.lead }, level);
   if ('error' in r) return [{ to, text: r.error! }];
-  return [{ to, text: r.text, actions: [{ id: cancelId(r.id), label: 'Batal', kind: 'secondary' }] }];
+  return [{ to, text: r.text, actions: liveActions(r.id, level, !msg.isDirect) }];
 }
 
 /**
@@ -127,16 +150,17 @@ export async function ingetinCommand(cmd: CommandInvocation): Promise<Reply> {
   const target = cmd.options.untuk === 'kelas' ? 'group' : 'self';
   const r = await create({ platform: cmd.platform, groupId: cmd.groupId, channelId: cmd.channelId, member: cmd.actor, target, what, at: when.at, lead: when.lead }, group.speechLevel as SpeechLevel);
   if ('error' in r) return { reply: { text: r.error!, private: true } };
-  return { reply: { text: r.text, private: target === 'self', actions: [{ id: cancelId(r.id), label: 'Batal', kind: 'secondary' }] } };
+  return { reply: { text: r.text, private: target === 'self', actions: liveActions(r.id, group.speechLevel as SpeechLevel, target !== 'self') } };
 }
 
 export async function handleReminderAction(ev: ActionEvent): Promise<Reply> {
   const [, verb, id] = ev.actionId.split(':');
-  if ((verb !== 'no' && verb !== 'ok') || !id || !isValidObjectId(id)) return { reply: { text: 'Pengingat tidak ditemukan.', private: true } };
+  if (!['no', 'ok', 'me'].includes(verb ?? '') || !id || !isValidObjectId(id)) return { reply: { text: 'Pengingat tidak ditemukan.', private: true } };
   const r = await ReminderModel.findById(id).lean<ReminderDoc>();
   if (!r) return { reply: { text: 'Pengingat tidak ditemukan.', private: true } };
   const own = r.member.platformUserId === ev.actor.platformUserId;
   if (verb === 'ok') return acceptOffer(ev, r, own);
+  if (verb === 'me') return toggleJoin(ev, r, own);
   if (!own && !ev.isAdmin) return { reply: { text: 'Hanya yang minta yang bisa membatalkan.', private: true } };
   if (r.offered) {
     const declined = await ReminderModel.findOneAndUpdate({ _id: id, offered: true, cancelled: false }, { $set: { cancelled: true } });
@@ -156,7 +180,47 @@ async function acceptOffer(ev: ActionEvent, r: ReminderDoc, own: boolean): Promi
   if (!ok) return { reply: { text: 'Tawaran ini sudah dijawab.', private: true } };
   const group = await getGroup(r.platform as Platform, r.groupId);
   const level = (group?.speechLevel ?? 'santai') as SpeechLevel;
-  return { update: { text: CONFIRM[level](whenText(r.at, level, r.lead ?? undefined), r.what, r.target === 'group'), actions: [{ id: cancelId(String(r._id)), label: 'Batal', kind: 'secondary' }] } };
+  return { update: { text: liveText(r, level), actions: liveActions(String(r._id), level, true) } };
+}
+
+/** "🙋 Ingetin aku juga" — ditekan lagi = keluar. Pesannya hanya menampilkan jumlah, bukan nama. */
+async function toggleJoin(ev: ActionEvent, r: ReminderDoc, own: boolean): Promise<Reply> {
+  if (own) return { reply: { text: 'Kamu yang minta, jadi pasti ku ingetin 👍', private: true } };
+  if (r.offered || r.cancelled || r.sentAt || r.at <= now()) return { reply: { text: 'Pengingat ini sudah lewat / tidak aktif.', private: true } };
+  if (ev.groupId && ev.groupId !== r.groupId) return { reply: { text: 'Pengingat tidak ditemukan.', private: true } };
+  const uid = ev.actor.platformUserId;
+  const live = { _id: r._id, ...ACTIVE };
+  const joined = r.subscribers?.some((m) => m.platformUserId === uid);
+  const updated = joined
+    ? await ReminderModel.findOneAndUpdate(live, { $pull: { subscribers: { platformUserId: uid } } }, { returnDocument: 'after' }).lean<ReminderDoc>()
+    : await ReminderModel.findOneAndUpdate(
+        { ...live, 'subscribers.platformUserId': { $ne: uid }, [`subscribers.${MAX_SUBSCRIBERS - 1}`]: { $exists: false } },
+        { $push: { subscribers: { platformUserId: uid, displayName: ev.actor.displayName } } },
+        { returnDocument: 'after' },
+      ).lean<ReminderDoc>();
+  if (!updated) return { reply: { text: joined ? 'Pengingat ini sudah tidak aktif.' : `Yang ikut sudah penuh (${MAX_SUBSCRIBERS} orang) atau pengingatnya sudah lewat 🙏`, private: true } };
+  const group = await getGroup(r.platform as Platform, r.groupId);
+  const level = (group?.speechLevel ?? 'santai') as SpeechLevel;
+  return {
+    update: { text: liveText(updated, level), actions: liveActions(String(r._id), level, true) },
+    reply: { text: joined ? 'Oke, kamu nggak ikut diingetin lagi 👌' : `Siap, ${whenText(r.at, level, r.lead ?? undefined)} kamu ikut ku ingetin 🙋`, private: true },
+  };
+}
+
+/** Pesan saat pengingat jatuh tempo: pemilik + yang ikut ("🙋 Ingetin aku juga"). */
+type Who = { platformUserId: string; displayName: string };
+export function deliveryMessages(
+  r: Pick<ReminderDoc, 'platform' | 'groupId' | 'channelId' | 'target' | 'what'> & { member: Who; subscribers?: readonly Who[] },
+  level: SpeechLevel,
+): OutgoingMessage[] {
+  const asMember = (m: Who): Member => ({ platform: r.platform as Platform, platformUserId: m.platformUserId, groupId: r.groupId, displayName: m.displayName });
+  const dm = (member: Member, text: string): OutgoingMessage => ({ to: { kind: 'dm', member, fallbackChannelId: r.channelId, fallbackText: PRIVATE_FALLBACK[level](mention(member)) }, text });
+  const owner = asMember(r.member);
+  const subs = (r.subscribers ?? []).filter((m) => m.platformUserId !== owner.platformUserId).map(asMember);
+  const text = DELIVER[level](mention(owner), r.what, r.target === 'group');
+  // Pengingat kelas: satu pesan di channel, yang ikut di-mention supaya dapat notifikasi.
+  if (r.target === 'group') return [{ to: { kind: 'channel', channelId: r.channelId }, text: subs.length ? `${text}\n🙋 ${subs.map(mention).join(' ')}` : text }];
+  return [dm(owner, text), ...subs.map((m) => dm(m, JOINED_DELIVER[level](mention(m), r.what)))];
 }
 
 /** Scheduler: kirim pengingat yang sudah waktunya (diklaim atomik → tidak dobel). */
@@ -171,14 +235,7 @@ export async function collectReminders(at: Date): Promise<OutgoingMessage[]> {
     if (!g || g.pilotMode === 'jeda') continue; // dijeda: tunggu sampai jeda dibuka
     const claimed = await ReminderModel.findOneAndUpdate({ _id: r._id, ...ACTIVE }, { $set: { sentAt: at } });
     if (!claimed) continue;
-    const level = g.speechLevel as SpeechLevel;
-    const member = { platform: r.platform as Platform, platformUserId: r.member.platformUserId, groupId: r.groupId, displayName: r.member.displayName };
-    const text = DELIVER[level](mention(member), r.what, r.target === 'group');
-    out.push(
-      r.target === 'group'
-        ? { to: { kind: 'channel', channelId: r.channelId }, text }
-        : { to: { kind: 'dm', member, fallbackChannelId: r.channelId, fallbackText: PRIVATE_FALLBACK[level](mention(member)) }, text },
-    );
+    out.push(...deliveryMessages(r, g.speechLevel as SpeechLevel));
   }
   return out;
 }

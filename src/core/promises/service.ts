@@ -48,6 +48,7 @@ export const ids = {
   cancel: (id: string) => `p:no:${id}`,
   done: (id: string) => `p:done:${id}`,
   undo: (id: string) => `p:undo:${id}`,
+  drop: (id: string) => `p:drop:${id}`,
   form: (id: string) => `pf:edit:${id}`,
 };
 
@@ -57,6 +58,13 @@ const STATUS_LABEL: Record<string, string> = {
   done: '✅ selesai',
   overdue: '🔴 lewat deadline',
   cancelled: '⚪ dibatalkan',
+  stale: '⚫ dirapikan (lewat lama)',
+};
+
+const DROPPED: Record<SpeechLevel, string> = {
+  santai: 'oke, ku hapus dari daftar 👌 makasih udah ngabarin',
+  sopan: 'Baik, sudah saya hapus dari daftar. Terima kasih kabarnya 🙏',
+  krama: 'Inggih, sampun kula rapikaken saking daftar. Matur nuwun 🙏',
 };
 
 const deadlineLabel = (p: Pick<PromiseDoc, 'deadline'>) =>
@@ -395,7 +403,7 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
       update: { text: `${doneLine(level, late, mood)}\n${detailLine(updated!)}`, card: undefined, actions: [] },
       messages:
         // Lewat deadline yang diumumkan ke grup → kabari grup juga saat selesai (auto-aktif yang belum diakui tidak pernah diumumkan).
-        p.status === 'overdue' && !(p.autoActivated && !p.ownerTouched)
+        (p.status === 'overdue' || p.status === 'stale') && !(p.autoActivated && !p.ownerTouched)
           ? [{ to: { kind: 'channel', channelId: p.channelId }, text: `Kabar baik: **${p.task}** dari ${mention(p.owner)} sudah selesai. Terima kasih 🙏` }]
           : [],
     };
@@ -406,6 +414,18 @@ export async function handlePromiseAction(ev: ActionEvent): Promise<Reply> {
   if (!canManage(p, ev)) return deny(`Hanya ${p.owner.displayName} (atau pengurus kelas) yang bisa mengubah janji ini.`);
 
   if (verb === 'edit') return { form: editForm(p) };
+
+  if (verb === 'drop') {
+    // "Udah nggak perlu" — hanya pemilik/pengurus; keluar dari daftar tanpa diumumkan, tetap tercatat tidak ditepati.
+    if (!ev.isAdmin && p.owner.platformUserId !== ev.actor.platformUserId) return deny(`Hanya ${p.owner.displayName} yang bisa bilang ini udah nggak perlu.`);
+    const dropped = await PromiseModel.findOneAndUpdate(
+      { _id: id, status: { $in: ['active', 'overdue'] } },
+      { $set: { status: 'stale', closedReason: 'dropped', ownerTouched: true } },
+    );
+    if (!dropped) return deny('Janji ini sudah diproses sebelumnya.');
+    const level = await getSpeechLevel(p.platform, p.groupId);
+    return { update: { text: `${DROPPED[level]}\n~~${p.task}~~`, card: undefined, actions: [] } };
+  }
 
   const [level, mood] = await Promise.all([getSpeechLevel(p.platform, p.groupId), moodNow(p.groupId, p.channelId)]);
   // "Bukan janjiku" untuk janji auto-aktif yang belum pernah diakui pemiliknya (juga dari DM pengingat).
@@ -486,9 +506,13 @@ export async function handlePromiseForm(ev: FormSubmit): Promise<Reply> {
 
   const set: Record<string, unknown> = { task, deadline, deadlineText: rawDeadline || null };
   if (ev.actor.platformUserId === p.owner.platformUserId) set.ownerTouched = true;
-  if (p.status === 'active' || p.status === 'overdue') {
+  if (p.status === 'active' || p.status === 'overdue' || p.status === 'stale') {
     set.stage = deadline ? initialStage(deadline, at) : 'none';
     set.status = 'active';
+    // Deadline baru → tindak lanjut lewat deadline dimulai lagi dari awal.
+    set.followedUpAt = null;
+    set.staleAskedAt = null;
+    set.closedReason = null;
   }
   const updated = await PromiseModel.findByIdAndUpdate(id, { $set: set }, { returnDocument: 'after' }).lean<PromiseDoc>();
   const pending = updated!.status === 'pending_confirm';
@@ -551,13 +575,13 @@ export interface ClassScore {
 export async function classScores(platform: string): Promise<ClassScore[]> {
   const t = now();
   const rows = await PromiseModel.aggregate<{ _id: string; kept: number; late: number; missed: number; active: number }>([
-    { $match: { platform, status: { $in: ['active', 'done', 'overdue'] } } },
+    { $match: { platform, status: { $in: ['active', 'done', 'overdue', 'stale'] } } },
     {
       $group: {
         _id: '$groupId',
         kept: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'done'] }, { $or: [{ $eq: ['$deadline', null] }, { $lte: ['$doneAt', '$deadline'] }] }] }, 1, 0] } },
         late: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'done'] }, { $ne: ['$deadline', null] }, { $gt: ['$doneAt', '$deadline'] }] }, 1, 0] } },
-        missed: { $sum: { $cond: [{ $or: [{ $eq: ['$status', 'overdue'] }, { $and: [{ $eq: ['$status', 'active'] }, { $ne: ['$deadline', null] }, { $lt: ['$deadline', t] }] }] }, 1, 0] } },
+        missed: { $sum: { $cond: [{ $or: [{ $in: ['$status', ['overdue', 'stale']] }, { $and: [{ $eq: ['$status', 'active'] }, { $ne: ['$deadline', null] }, { $lt: ['$deadline', t] }] }] }, 1, 0] } },
         active: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'active'] }, { $or: [{ $eq: ['$deadline', null] }, { $gte: ['$deadline', t] }] }] }, 1, 0] } },
       },
     },

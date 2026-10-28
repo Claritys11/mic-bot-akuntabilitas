@@ -91,7 +91,8 @@ MemberSchema.index({ platform: 1, groupId: 1, platformUserId: 1 }, { unique: tru
 export const MemberModel = mongoose.model('Member', MemberSchema);
 
 // ---------- Promise (janji) ----------
-export const PROMISE_STATUS = ['pending_confirm', 'active', 'done', 'overdue', 'cancelled'] as const;
+// stale = lewat deadline lama tanpa kabar / pemilik bilang "udah nggak perlu": keluar dari daftar, tetap dihitung tidak ditepati.
+export const PROMISE_STATUS = ['pending_confirm', 'active', 'done', 'overdue', 'cancelled', 'stale'] as const;
 const PromiseSchema = new Schema(
   {
     platform: { type: String, required: true },
@@ -119,6 +120,9 @@ const PromiseSchema = new Schema(
     nudgedAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },
     followedUpAt: { type: Date, default: null },
+    // Pertanyaan terakhir (hari ke-4 lewat deadline); tak dijawab 3 hari → status stale.
+    staleAskedAt: { type: Date, default: null },
+    closedReason: { type: String, enum: ['dropped', 'expired', null], default: null },
     ownerTouched: { type: Boolean, default: false },
   },
   { timestamps: true },
@@ -371,6 +375,8 @@ const ReminderSchema = new Schema(
     offered: { type: Boolean, default: false },
     // Jam diajukan dari hari acaranya ('eve' malam sebelumnya / 'morning' pagi harinya) → disebut di konfirmasi.
     lead: { type: String, enum: ['eve', 'morning', null], default: null },
+    // "🙋 Ingetin aku juga": ikut di-mention / di-DM saat pengingat dikirim.
+    subscribers: { type: [MemberRef], default: [] },
   },
   { timestamps: true },
 );

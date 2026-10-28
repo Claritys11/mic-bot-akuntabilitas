@@ -16,7 +16,7 @@ import { HELP_WORDS, helpText } from './help.ts';
 import { jamTenangCommand } from './quiet.ts';
 import { can } from './team/roles.ts';
 import { timHapus, timLihat, timTambah } from './team/service.ts';
-import { collectFollowUps, collectNudges, collectWeeklyDigests } from './followup/service.ts';
+import { collectFollowUps, collectNudges, collectStaleChecks, collectStaleClosures, collectWeeklyDigests } from './followup/service.ts';
 import { pilotEkspor, pilotMode } from './pilot/service.ts';
 import { collectReminders, handleReminderAction, handleReminderRequest, ingetinCommand, offerReminder } from './reminders/service.ts';
 import { dataHapusAnggota, dataHapusKelas, dataHapusSaya, handleDataAction } from './privacy/service.ts';
@@ -222,7 +222,7 @@ export function createCore(llm: LLMProvider, deps: CoreDeps = {}): Core {
     },
 
     async tick(at = now()) {
-      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectUndeliveredProofs(at), collectNudges(at), collectFollowUps(at), collectWeeklyDigests(at), deps.sheetLinker ? collectSheetOffers(at) : Promise.resolve([])]);
+      const results = await Promise.allSettled([collectPromiseReminders(at), collectKasReminders(at), collectOppPosts(at), collectReminders(at), collectUndeliveredProofs(at), collectNudges(at), collectFollowUps(at), collectStaleChecks(at), collectStaleClosures(at), collectWeeklyDigests(at), deps.sheetLinker ? collectSheetOffers(at) : Promise.resolve([])]);
       const out: OutgoingMessage[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') out.push(...r.value);

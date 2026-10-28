@@ -120,10 +120,10 @@ const DONE: Record<SpeechLevel, Record<Tone, { onTime: string; late: string }>> 
   },
 };
 
-export const LABELS: Record<SpeechLevel, { confirm: string; edit: string; cancel: string; done: string; notMine: string }> = {
-  santai: { confirm: '✅ Jadi, catat!', edit: '✏️ Ubah', cancel: '❌ Ga jadi', done: '✅ Udah kelar', notMine: '❌ Bukan janjiku' },
-  sopan: { confirm: '✅ Ya, catat', edit: '✏️ Ubah', cancel: '❌ Bukan janji', done: '✅ Sudah selesai', notMine: '❌ Bukan janji saya' },
-  krama: { confirm: '✅ Inggih, cathet', edit: '✏️ Ubah', cancel: '❌ Sanes janji', done: '✅ Sampun rampung', notMine: '❌ Sanes janji kula' },
+export const LABELS: Record<SpeechLevel, { confirm: string; edit: string; cancel: string; done: string; notMine: string; drop: string }> = {
+  santai: { confirm: '✅ Jadi, catat!', edit: '✏️ Ubah', cancel: '❌ Ga jadi', done: '✅ Udah kelar', notMine: '❌ Bukan janjiku', drop: '🗑️ Udah nggak perlu' },
+  sopan: { confirm: '✅ Ya, catat', edit: '✏️ Ubah', cancel: '❌ Bukan janji', done: '✅ Sudah selesai', notMine: '❌ Bukan janji saya', drop: '🗑️ Tidak diperlukan lagi' },
+  krama: { confirm: '✅ Inggih, cathet', edit: '✏️ Ubah', cancel: '❌ Sanes janji', done: '✅ Sampun rampung', notMine: '❌ Sanes janji kula', drop: '🗑️ Sampun mboten perlu' },
 };
 
 export const askLine = (level: SpeechLevel, who: string, task: string, mood: Mood = 'santai', pick: Pick = Math.random) =>

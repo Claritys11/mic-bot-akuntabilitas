@@ -14,11 +14,14 @@ import { mention, type OutgoingMessage, type Platform, type SpeechLevel } from '
 // Bot sebagai teman yang menindaklanjuti, bukan hanya alarm:
 //  • janji yang ditanya tapi belum dijawab → ditanya sekali lagi (3 jam kemudian)
 //  • lewat deadline sehari → ditanya kabarnya lewat DM, ditawari ubah deadline
+//  • lewat 4 hari → ditanya terakhir kali; tak dijawab 3 hari lagi → dirapikan dari daftar (stale)
 //  • Senin pagi → rangkuman minggu ini untuk kelas
 
 const H = 3600_000;
 export const NUDGE_AFTER_MS = 3 * H;
 export const FOLLOW_UP_AFTER_MS = 25 * H; // sehari setelah pengumuman lewat deadline (+1 jam)
+export const STALE_ASK_AFTER_MS = 4 * 24 * H; // pertanyaan terakhir, dihitung dari deadline
+export const STALE_CLOSE_AFTER_MS = 3 * 24 * H; // tak dijawab sejak pertanyaan terakhir → stale
 
 const NUDGE: Record<SpeechLevel, (who: string, task: string) => string> = {
   santai: (who, task) => `eh ${who}, yang tadi soal _${task}_ jadi ku catat? biar nanti ku ingetin 😄`,
@@ -29,6 +32,14 @@ const FOLLOW_UP: Record<SpeechLevel, (who: string, task: string) => string> = {
   santai: (who, task) => `${who}, gimana _${task}_? udah kelar belum? kalau udah klik ✅, kalau perlu mundur klik ✏️ buat atur deadline baru. butuh bantuan? bilang aja di grup 🙏`,
   sopan: (who, task) => `${who}, bagaimana kabar _${task}_? Kalau sudah selesai, klik ✅. Kalau perlu waktu tambahan, klik ✏️ untuk mengatur deadline baru 🙏`,
   krama: (who, task) => `Nuwun sewu ${who}, kados pundi _${task}_? Menawi sampun rampung mangga klik ✅, menawi betah wekdal malih mangga klik ✏️ 🙏`,
+};
+const STALE_ASK: Record<SpeechLevel, (who: string, task: string) => string> = {
+  santai: (who, task) =>
+    `${who}, _${task}_ udah lewat beberapa hari nih. masih jalan? klik ✅ kalau udah kelar, ✏️ kalau butuh deadline baru, atau 🗑️ kalau udah nggak perlu. kalau nggak ada kabar, minggu ini ku rapikan dari daftar (nggak diumumin kok) 🙏`,
+  sopan: (who, task) =>
+    `${who}, _${task}_ sudah lewat beberapa hari. Apakah masih berjalan? Klik ✅ bila sudah selesai, ✏️ untuk deadline baru, atau 🗑️ bila sudah tidak diperlukan. Tanpa kabar, minggu ini akan saya rapikan dari daftar (tidak diumumkan) 🙏`,
+  krama: (who, task) =>
+    `Nuwun sewu ${who}, _${task}_ sampun langkung sawetawis dinten. Menapa taksih lumampah? ✅ menawi sampun rampung, ✏️ kangge wekdal enggal, utawi 🗑️ menawi sampun mboten perlu. Menawi mboten wonten kabar, minggu menika kula rapikaken saking daftar 🙏`,
 };
 const DIGEST_OPEN: Record<SpeechLevel, string> = {
   santai: 'Selamat pagi! ☀️ Rangkuman minggu ini:',
@@ -100,6 +111,51 @@ export async function collectFollowUps(at: Date): Promise<OutgoingMessage[]> {
     });
   }
   return out;
+}
+
+/**
+ * Janji yang lewat deadline berhari-hari tanpa kabar: tanya terakhir kali lewat DM (selesai / ubah /
+ * udah nggak perlu). Sekali saja — yang diabaikan dirapikan oleh collectStaleClosures.
+ */
+export async function collectStaleChecks(at: Date): Promise<OutgoingMessage[]> {
+  const rows = await PromiseModel.find({
+    status: 'overdue',
+    staleAskedAt: null,
+    shadow: { $ne: true },
+    deadline: { $lte: new Date(at.getTime() - STALE_ASK_AFTER_MS) },
+    // Jangan menumpuk dengan tanya kabar hari pertama (mis. bot sempat mati); yang >14 hari tak pernah ditanya.
+    $or: [{ followedUpAt: { $lte: new Date(at.getTime() - 2 * 24 * H) } }, { deadline: { $lte: new Date(at.getTime() - 14 * 24 * H) } }],
+  })
+    .limit(100)
+    .lean<PromiseDoc[]>();
+  if (!rows.length) return [];
+  const groups = await activeGroups(rows.map((r) => r.groupId), at);
+  const out: OutgoingMessage[] = [];
+  for (const p of rows) {
+    const g = groups.get(groupKey(p.platform, p.groupId));
+    if (!g) continue;
+    const claimed = await PromiseModel.findOneAndUpdate({ _id: p._id, staleAskedAt: null, status: 'overdue' }, { $set: { staleAskedAt: at } });
+    if (!claimed) continue;
+    const level = g.speechLevel as SpeechLevel;
+    const id = String(p._id);
+    const owner = { platform: p.platform as Platform, platformUserId: p.owner.platformUserId, groupId: p.groupId, displayName: p.owner.displayName };
+    const notMine = p.autoActivated && !p.ownerTouched ? [{ id: ids.cancel(id), label: LABELS[level].notMine, kind: 'secondary' as const }] : [];
+    out.push({
+      to: { kind: 'dm', member: owner, fallbackChannelId: p.channelId, fallbackText: PRIVATE_FALLBACK[level](mention(owner)) },
+      text: `${STALE_ASK[level](mention(owner), p.task)}\n${detailLine(p)}`,
+      actions: [...activeActions(id, level), { id: ids.drop(id), label: LABELS[level].drop, kind: 'danger' as const }, ...notMine],
+    });
+  }
+  return out;
+}
+
+/** Pertanyaan terakhir diabaikan → keluar dari daftar aktif tanpa diumumkan (tetap dihitung tidak ditepati). */
+export async function collectStaleClosures(at: Date): Promise<OutgoingMessage[]> {
+  await PromiseModel.updateMany(
+    { status: 'overdue', staleAskedAt: { $ne: null, $lte: new Date(at.getTime() - STALE_CLOSE_AFTER_MS) } },
+    { $set: { status: 'stale', closedReason: 'expired' } },
+  );
+  return [];
 }
 
 /** Senin 07.00–10.00 WIB: rangkuman minggu ini (janji, lomba, kas tanpa nama). Sekali per minggu per kelas. */

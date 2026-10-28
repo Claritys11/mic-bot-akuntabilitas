@@ -17,7 +17,7 @@ export function helpText(ctx: HelpContext): string {
     '**Halo! Aku MIC-Bot 👋 Cukup ngobrol biasa aja:**',
     '• **Janji** — _"aku yang bikin PPT, jumat"_ → aku catat & ingetin sebelum deadline. Salah tangkap? balas _"bukan"_.',
     '• **Tanya** — _"ada tugas gak?"_, _"kas aku udah lunas?"_, _"ada lomba ga?"_',
-    '• **Pengingat** — _"@MIC ingetin aku besok jam 7 bawa proyektor"_ (atau _"ingetin kita senin …"_ buat sekelas). Tanpa tag pun, _"jangan lupa besok …"_ / _"takut lupa …"_ → aku tawarin ngingetin.',
+    '• **Pengingat** — _"@MIC ingetin aku besok jam 7 bawa proyektor"_ (atau _"ingetin kita senin …"_ buat sekelas). Tanpa tag pun, _"jangan lupa besok …"_ / _"takut lupa …"_ → aku tawarin ngingetin. Mau ikut diingetin juga? klik **🙋 Ingetin aku juga**.',
     `• **Bayar kas** — kirim foto bukti transfer ${kas}, bendahara yang ngecek.`,
     '• **Info lomba** — kirim link lombanya sambil tag aku, nanti aku bacakan.',
     '',

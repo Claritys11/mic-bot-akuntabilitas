@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { detectReminderOffer, looksLikeReminderRequest, parseReminderRequest } from '../src/core/reminders/parse.ts';
+import { deliveryMessages, MAX_SUBSCRIBERS } from '../src/core/reminders/service.ts';
 import { formatWIB } from '../src/core/time.ts';
 
 // Senin, 2 Nov 2026 19:00 WIB
@@ -63,5 +64,26 @@ describe('tawaran pengingat tanpa tag', () => {
     expect(o('ingetin aku beli spidol')).toBeNull();
     expect(o('besok ulangan matematika')).toBeNull();
     expect(o('aku lupa password')).toBeNull();
+  });
+});
+
+describe('🙋 ingetin aku juga', () => {
+  const base = { platform: 'discord', groupId: 'G', channelId: 'C', member: { platformUserId: 'ani', displayName: 'Ani' }, what: 'bawa topi' } as const;
+  const subs = [{ platformUserId: 'budi', displayName: 'Budi' }, { platformUserId: 'ani', displayName: 'Ani' }];
+  test('pengingat kelas: satu pesan di channel, yang ikut di-mention (pemilik tidak dobel)', () => {
+    const out = deliveryMessages({ ...base, target: 'group' as const, subscribers: subs }, 'santai');
+    expect(out).toHaveLength(1);
+    expect(out[0]!.to).toEqual({ kind: 'channel', channelId: 'C' });
+    expect(out[0]!.text).toContain('🙋 {{@budi}}');
+    expect(out[0]!.text!.split('{{@ani}}')).toHaveLength(2);
+  });
+  test('pengingat pribadi: pemilik + tiap yang ikut dapat DM sendiri', () => {
+    const out = deliveryMessages({ ...base, target: 'self' as const, subscribers: subs }, 'santai');
+    expect(out.map((m) => (m.to.kind === 'dm' ? m.to.member.platformUserId : null))).toEqual(['ani', 'budi']);
+    expect(out[1]!.text).toContain('ikut diingetin');
+  });
+  test('tanpa yang ikut → seperti biasa', () => {
+    expect(deliveryMessages({ ...base, target: 'group' as const, subscribers: [] }, 'santai')[0]!.text).not.toContain('🙋');
+    expect(MAX_SUBSCRIBERS).toBeGreaterThan(0);
   });
 });
