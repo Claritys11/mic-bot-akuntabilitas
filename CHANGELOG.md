@@ -29,6 +29,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 - Deteksi janji mengenali slang & Jawa (sy yg, tak garapne, ku kerjain) dan menolak cerita lampau.
 - Prioritas: pilot (M6) sebelum Fase 2; Fase 2 dibekukan sampai ada data.
 
+### Diperbaiki
+- Uji dengan Google sungguhan: kode locale `id_ID` ditolak Sheets API → coba `in_ID`/`id_ID`, lalu bawaan akun.
+- Kelas yang mengatur kas sebelum fitur Sheets ada tidak pernah ditawari laporan (kolom `setAt` kosong).
+
 ### Direncanakan
 - Fase 2 — pengaturan ramah pengguna: panel `/pengaturan`, peran pengurus, kas lengkap (tunai,
   pengeluaran, patungan, riwayat tarif), tambah lomba dari link/poster, jam tenang, pengaturan lewat
