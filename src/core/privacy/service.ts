@@ -1,4 +1,4 @@
-import { AuditModel, ReminderModel, GroupModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, SheetLinkModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
+import { AuditModel, ReminderModel, GroupModel, HeldProofModel, KasProofModel, KasReminderModel, MemberModel, MessageBufferModel, OnboardingModel, OppPostModel, OpportunityModel, PromiseModel, SheetLinkModel, TransactionModel, WaPromptModel } from '../../db/models.ts';
 import { getGroup, NOT_SETUP_TEXT } from '../groups.ts';
 import { can, rolesOf } from '../team/roles.ts';
 import { mention, type ActionEvent, type CommandInvocation, type Reply } from '../types.ts';
@@ -80,9 +80,11 @@ export async function deleteMemberData(platform: string, groupId: string, userId
       { $set: { 'kas.sheetId': null, 'kas.sheetTitle': null, 'kas.sheetAuth': null, 'kas.sheetOwnerId': null, 'kas.sheetError': null } },
     ),
   ]);
+  // Gambar yang ditahan (bukan/belum tentu bukti) juga memuat data transfer — ikut dihitung sebagai bukti kas.
+  const held = await HeldProofModel.deleteMany({ groupId, 'member.platformUserId': userId });
   // Nama yang dihapus juga harus hilang dari Google Sheet laporan kas.
   await GroupModel.updateOne({ groupId, 'kas.sheetId': { $ne: null } }, { $set: { 'kas.sheetDirtyAt': new Date() } });
-  return { janji: janji.deletedCount, buktiKas: bukti.deletedCount, pesanBuffer: buffer.deletedCount, transaksiDianonimkan: tx.modifiedCount };
+  return { janji: janji.deletedCount, buktiKas: bukti.deletedCount + held.deletedCount, pesanBuffer: buffer.deletedCount, transaksiDianonimkan: tx.modifiedCount };
 }
 
 /** Hapus SEMUA data kelas: profil, anggota, janji, kas (termasuk ledger), buffer, info lomba kelas ini. */
@@ -90,6 +92,7 @@ export async function deleteGroupData(platform: string, groupId: string): Promis
   const results = await Promise.all([
     PromiseModel.deleteMany({ groupId }),
     KasProofModel.deleteMany({ groupId }),
+    HeldProofModel.deleteMany({ groupId }),
     TransactionModel.collection.deleteMany({ groupId }),
     KasReminderModel.deleteMany({ groupId }),
     MessageBufferModel.deleteMany({ groupId }),

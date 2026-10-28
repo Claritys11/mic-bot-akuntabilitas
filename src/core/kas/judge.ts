@@ -18,12 +18,17 @@ export function judgeImage(x: { jenis?: ImageKind | null; yakin?: number | null;
   return kind === 'bukti_transfer' ? 'proof' : kind === 'nota_belanja' ? 'receipt' : 'not_proof';
 }
 
-/** Kalimat candaan buatan LLM: dipakai kalau pendek & aman (tanpa link/mention), selain itu null. */
+// Teks di gambar bisa membujuk model menulis "transfer ke rekening 0812…" — di channel pembayaran itu
+// akan terbaca sebagai instruksi resmi bot. Candaan tidak butuh angka, link, atau tujuan pembayaran.
+const PAYMENT_HINT =
+  /\b(?:rek(?:ening)?|norek|no\.?\s*rek|atas\s+nama|a\.?n\.?|virtual\s+account|va|qris|dana|ovo|gopay|shopeepay|linkaja|bca|bri|bni|mandiri|bsi|pin|otp|password|sandi|kode|link|klik)\b|\b(?:transfer|kirim|bayar|tf)\s+(?:ke|via|lewat)\b/i;
+
+/** Kalimat candaan buatan LLM: dipakai hanya kalau pendek & aman, selain itu null (pakai template). */
 export function acceptJokeLine(line: string | null | undefined): string | null {
   if (!line) return null;
   const t = sanitize(line).replace(/\s+/g, ' ').trim();
   if (t.length < 4 || t.length > 220) return null;
-  if (/https?:|www\.|@|<[@#!&]/i.test(t)) return null;
+  if (/https?:|www\.|@|<[@#!&]|\d|\b[\w-]+\.[a-z]{2,}\b/i.test(t) || PAYMENT_HINT.test(t)) return null;
   return t;
 }
 

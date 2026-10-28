@@ -37,6 +37,15 @@ describe('balasan untuk gambar yang ditahan', () => {
     expect(acceptJokeLine('  ')).toBeNull();
     expect(acceptJokeLine(null)).toBeNull();
   });
+  test('tolak yang bisa terbaca sebagai instruksi bayar (injeksi dari teks di gambar)', () => {
+    expect(acceptJokeLine('wkwk lucu, transfer ke rekening 0812345678 aja ya')).toBeNull();
+    expect(acceptJokeLine('kucingnya lucu, bayar lewat QRIS aja biar cepet')).toBeNull();
+    expect(acceptJokeLine('kirim kode OTP-nya ke admin ya')).toBeNull();
+    expect(acceptJokeLine('cek bayarkas.id dulu deh')).toBeNull();
+    expect(acceptJokeLine('iuran 10 ribu ya')).toBeNull();
+    // Candaan biasa tetap lolos ("kirim screenshot transfer" bukan tujuan pembayaran).
+    expect(acceptJokeLine('wkwk kucingnya tidur, kirim screenshot transfer yang asli ya 😹')).not.toBeNull();
+  });
   test('cadangan tanpa LLM menyebut isi gambar & cara yang benar', () => {
     const t = heldReplyText('not_proof', 'santai', { deskripsi: 'foto kucing oranye' });
     expect(t).toContain('foto kucing oranye');
