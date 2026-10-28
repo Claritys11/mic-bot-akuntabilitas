@@ -168,13 +168,15 @@ export class SheetsClient {
   /** Tulis ulang tab-tab milik bot (dibuat kalau belum ada). Nilai ditulis RAW → tidak ada formula yang dieksekusi. */
   async writeTabs(spreadsheetId: string, tabs: SheetTab[]): Promise<void> {
     const id = encodeURIComponent(spreadsheetId);
-    const meta = await this.call<{ sheets: { properties: { sheetId: number; title: string } }[] }>(`${id}?fields=sheets.properties(sheetId,title)`);
+    const meta = await this.call<{ sheets: SheetMeta[] }>(
+      `${id}?fields=sheets(properties(sheetId,title),bandedRanges(bandedRangeId),conditionalFormats(ranges(sheetId)),protectedRanges(protectedRangeId,description))`,
+    );
     const existing = new Map(meta.sheets.map((s) => [s.properties.title, s.properties.sheetId]));
     const missing = tabs.filter((t) => !existing.has(t.title));
     if (missing.length) {
       const added = await this.call<{ replies: { addSheet: { properties: { sheetId: number; title: string } } }[] }>(`${id}:batchUpdate`, {
         method: 'POST',
-        body: { requests: missing.map((t) => ({ addSheet: { properties: { title: t.title, gridProperties: { frozenRowCount: 1 } } } })) },
+        body: { requests: missing.map((t) => ({ addSheet: { properties: { title: t.title } } })) },
       });
       for (const r of added.replies) existing.set(r.addSheet.properties.title, r.addSheet.properties.sheetId);
     }
@@ -184,18 +186,111 @@ export class SheetsClient {
       method: 'POST',
       body: { valueInputOption: 'RAW', data: tabs.map((t) => ({ range: `${range(t.title)}!A1`, values: t.rows })) },
     });
-    // Header tebal + kolom pas (sekadar rapi; gagal di sini tidak masalah).
-    await this.call(`${id}:batchUpdate`, {
-      method: 'POST',
-      body: {
-        requests: tabs.flatMap((t) => {
-          const sheetId = existing.get(t.title)!;
-          return [
-            { repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } },
-            { autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 10 } } },
-          ];
-        }),
-      },
-    }).catch(() => undefined);
+    // Tampilan (rupiah, warna, filter). Gagal di sini tidak menggagalkan data yang sudah tertulis.
+    await this.call(`${id}:batchUpdate`, { method: 'POST', body: { requests: formatRequests(tabs, existing, meta.sheets) } }).catch((err: Error) =>
+      console.warn(`[sheets] format tampilan gagal: ${err.message}`),
+    );
   }
+}
+
+interface SheetMeta {
+  properties: { sheetId: number; title: string };
+  bandedRanges?: { bandedRangeId: number }[];
+  conditionalFormats?: unknown[];
+  protectedRanges?: { protectedRangeId: number; description?: string }[];
+}
+
+const rgb = (hex: string) => ({ red: parseInt(hex.slice(1, 3), 16) / 255, green: parseInt(hex.slice(3, 5), 16) / 255, blue: parseInt(hex.slice(5, 7), 16) / 255 });
+const COLOR = {
+  header: rgb('#1E5B4F'),
+  headerText: rgb('#FFFFFF'),
+  band: rgb('#F1F6F4'),
+  white: rgb('#FFFFFF'),
+  title: rgb('#1E5B4F'),
+  muted: rgb('#6B7280'),
+  good: rgb('#D9F2E3'),
+  goodText: rgb('#14532D'),
+  wait: rgb('#FEF3C7'),
+  waitText: rgb('#78350F'),
+  bad: rgb('#FDE2E1'),
+  badText: rgb('#7F1D1D'),
+};
+const MONEY = { type: 'CURRENCY', pattern: '"Rp"#,##0;-"Rp"#,##0;"Rp"0' };
+export const PROTECT_NOTE = 'Diisi otomatis oleh MIC-Bot';
+
+/**
+ * Permintaan batchUpdate untuk merapikan tab buatan bot. Diterapkan ulang tiap sinkron (jumlah baris
+ * berubah), jadi pita warna & aturan warna lama dihapus dulu supaya tidak menumpuk.
+ */
+export function formatRequests(tabs: SheetTab[], ids: Map<string, number>, meta: SheetMeta[]): object[] {
+  const out: object[] = [];
+  for (const t of tabs) {
+    const sheetId = ids.get(t.title);
+    if (sheetId === undefined) continue;
+    const old = meta.find((m) => m.properties.sheetId === sheetId);
+    for (const b of old?.bandedRanges ?? []) out.push({ deleteBanding: { bandedRangeId: b.bandedRangeId } });
+    for (let k = (old?.conditionalFormats ?? []).length - 1; k >= 0; k--) out.push({ deleteConditionalFormatRule: { sheetId, index: k } });
+
+    const rows = Math.max(t.rows.length, 1);
+    const cols = Math.max(1, ...t.rows.map((r) => r.length));
+    const area = (r0: number, r1: number, c0 = 0, c1 = cols) => ({ sheetId, startRowIndex: r0, endRowIndex: r1, startColumnIndex: c0, endColumnIndex: c1 });
+    const fmt = (r: object, format: object, fields: string) => out.push({ repeatCell: { range: r, cell: { userEnteredFormat: format }, fields } });
+
+    out.push({
+      updateSheetProperties: {
+        properties: { sheetId, gridProperties: { frozenRowCount: t.table ? 1 : 0, hideGridlines: !t.table }, tabColorStyle: { rgbColor: t.table ? COLOR.band : COLOR.header } },
+        fields: 'gridProperties(frozenRowCount,hideGridlines),tabColorStyle',
+      },
+    });
+    // Mulai dari bersih (sisa format dari isi lama yang lebih panjang), lalu font & perataan dasar.
+    // Tabel: teks panjang dibungkus di kolom berlebar tetap, bukan meluber ke kanan.
+    fmt({ sheetId }, { verticalAlignment: 'MIDDLE', wrapStrategy: t.table ? 'WRAP' : 'OVERFLOW_CELL', textFormat: { fontSize: 10 } }, 'userEnteredFormat');
+
+    if (t.table) {
+      fmt(area(0, 1), { backgroundColor: COLOR.header, verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP', textFormat: { bold: true, foregroundColor: COLOR.headerText } }, 'userEnteredFormat');
+      out.push({
+        addBanding: { bandedRange: { range: area(0, rows), rowProperties: { headerColor: COLOR.header, firstBandColor: COLOR.white, secondBandColor: COLOR.band } } },
+      });
+      out.push({ setBasicFilter: { filter: { range: area(0, rows) } } });
+      out.push({ updateDimensionProperties: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 }, properties: { pixelSize: 32 }, fields: 'pixelSize' } });
+    } else {
+      out.push({ clearBasicFilter: { sheetId } });
+      // Ringkasan: judul besar, kolom label tebal, keterangan abu-abu.
+      fmt(area(0, 1, 0, 1), { textFormat: { bold: true, fontSize: 16, foregroundColor: COLOR.title } }, 'userEnteredFormat.textFormat');
+      fmt(area(1, 2, 0, 1), { textFormat: { italic: true, foregroundColor: COLOR.muted } }, 'userEnteredFormat.textFormat');
+      t.rows.forEach((r, k) => {
+        if (k < 2 || r.length === 0) return;
+        if (r.length === 1 && String(r[0]).startsWith('•')) fmt(area(k, k + 1, 0, 1), { textFormat: { foregroundColor: COLOR.muted } }, 'userEnteredFormat.textFormat');
+        else fmt(area(k, k + 1, 0, 1), { textFormat: { bold: true } }, 'userEnteredFormat.textFormat');
+        if (r.length > 1 && typeof r[1] === 'number') fmt(area(k, k + 1, 1, 2), { textFormat: { bold: true, fontSize: 12 } }, 'userEnteredFormat.textFormat');
+      });
+    }
+
+    const first = t.table ? 1 : 0;
+    for (const c of t.moneyCols ?? []) fmt(area(first, rows, c, c + 1), { numberFormat: MONEY, horizontalAlignment: 'RIGHT' }, 'userEnteredFormat(numberFormat,horizontalAlignment)');
+
+    if (t.status) {
+      const r = area(1, Math.max(rows, 2), t.status.col, t.status.col + 1);
+      const rule = (words: string[], bg: object, fg: object) =>
+        words.map((w) => ({
+          addConditionalFormatRule: {
+            index: 0,
+            rule: { ranges: [r], booleanRule: { condition: { type: 'TEXT_STARTS_WITH', values: [{ userEnteredValue: w }] }, format: { backgroundColor: bg, textFormat: { bold: true, foregroundColor: fg } } } },
+          },
+        }));
+      out.push(...rule(t.status.good, COLOR.good, COLOR.goodText), ...rule(t.status.wait ?? [], COLOR.wait, COLOR.waitText), ...rule(t.status.bad, COLOR.bad, COLOR.badText));
+    }
+
+    if (t.widths) {
+      t.widths.forEach((px, c) => out.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: c, endIndex: c + 1 }, properties: { pixelSize: px }, fields: 'pixelSize' } }));
+    } else {
+      out.push({ autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: cols } } });
+    }
+
+    // Edit tab buatan bot → Google memberi peringatan dulu (tidak dikunci: pemilik tetap bebas).
+    if (!(old?.protectedRanges ?? []).some((p) => p.description === PROTECT_NOTE)) {
+      out.push({ addProtectedRange: { protectedRange: { range: { sheetId }, description: PROTECT_NOTE, warningOnly: true } } });
+    }
+  }
+  return out;
 }

@@ -33,7 +33,8 @@ describe('isi Google Sheet kas', () => {
   });
   test('ringkasan: saldo, masuk, keluar, lunas/belum', () => {
     const r = Object.fromEntries(tab('Ringkasan').filter((x) => x.length === 2));
-    expect(r).toMatchObject({ Saldo: 8000, 'Total masuk': 15000, 'Total pengeluaran': 7000, 'Sudah lunas periode ini': 1, 'Belum lunas periode ini': 1 });
+    expect(r).toMatchObject({ Saldo: 8000, 'Total masuk': 15000, 'Total pengeluaran': 7000, 'Sudah lunas periode ini': '1 dari 2 anggota' });
+    expect(tab('Ringkasan')[0]).toEqual(['Laporan Kas XI RPL 1']);
   });
   test('buku kas: saldo berjalan & pengeluaran di kolom Keluar', () => {
     expect(tab('Buku Kas').slice(1).map((r) => [r[1], r[4], r[5], r[6]])).toEqual([
@@ -49,7 +50,7 @@ describe('isi Google Sheet kas', () => {
     expect(rows[2]!.at(-1)).toBe('Kurang Rp5.000');
   });
   test('bukti: status & catatan otomatis', () => {
-    expect(tab('Bukti Transfer')[1]).toEqual(['2026-10-05 09:00', 'Ani', 10000, 'Oktober 2026', 'Disetujui', '[recipient_mismatch]']);
+    expect(tab('Bukti Transfer')[1]).toEqual(['2026-10-05 09:00', 'Ani', 10000, 'Oktober 2026', 'Disetujui', '• [recipient_mismatch]']);
   });
 });
 

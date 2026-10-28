@@ -31,6 +31,8 @@ function fakeGoogle(tokenReplies: { status: number; body: unknown }[] = []) {
       const r = tokenReplies.shift() ?? { status: 428, body: { error: 'authorization_pending' } };
       return json(r.status, r.body);
     }
+    if (u === 'https://sheets.googleapis.com/v4/spreadsheets' && JSON.parse(body).properties.locale === 'in_ID')
+      return json(400, { error: { message: 'Invalid properties: Unsupported locale: in_ID' } });
     if (u === 'https://sheets.googleapis.com/v4/spreadsheets') return json(200, { spreadsheetId: 'SHEET123', properties: { title: JSON.parse(body).properties.title } });
     if (u.includes('/revoke')) return json(200, {});
     return json(200, {});
@@ -83,6 +85,9 @@ describe('login Google lewat kode (device flow)', () => {
     const made = await l.createSheet(cred, 'Kas XI RPL 1 (MIC-Bot)', ['Ringkasan', 'Buku Kas']);
     expect(made).toEqual({ id: 'SHEET123', title: 'Kas XI RPL 1 (MIC-Bot)' });
     const create = g.calls.find((c) => c.url === 'https://sheets.googleapis.com/v4/spreadsheets')!;
+    // Locale ditolak Google → coba kode berikutnya, bukan gagal total.
+    const creates = g.calls.filter((c) => c.url === 'https://sheets.googleapis.com/v4/spreadsheets').map((c) => JSON.parse(c.body).properties.locale);
+    expect(creates).toEqual(['in_ID', 'id_ID']);
     expect(JSON.parse(create.body).sheets.map((s: { properties: { title: string } }) => s.properties.title)).toEqual(['Ringkasan', 'Buku Kas']);
     // Token akses diambil dari refresh token yang dibuka di sisi integrasi.
     expect(new URLSearchParams(g.calls.find((c) => c.url.endsWith('/token'))!.body).get('refresh_token')).toBe('1//rahasia');

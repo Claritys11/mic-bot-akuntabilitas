@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { SheetsClient, signedAssertion } from '../src/integrations/google/sheets.ts';
+import { formatRequests, PROTECT_NOTE, SheetsClient, signedAssertion } from '../src/integrations/google/sheets.ts';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const sa = { client_email: 'mic-bot@proyek.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() };
@@ -49,8 +49,8 @@ describe('klien Google Sheets', () => {
   test('tulis: tab yang belum ada dibuat, dikosongkan, lalu diisi RAW (formula tidak dieksekusi)', async () => {
     const g = fakeGoogle({ sheets: ['Ringkasan'] });
     await new SheetsClient(sa, g.http).writeTabs('abc', [
-      { title: 'Ringkasan', rows: [['Saldo', 1000]] },
-      { title: 'Buku Kas', rows: [['=HYPERLINK("x")', 5]] },
+      { title: 'Ringkasan', rows: [['Saldo', 1000]], table: false },
+      { title: 'Buku Kas', rows: [['=HYPERLINK("x")', 5]], table: true },
     ]);
     const add = g.calls.find((c) => c.url.endsWith(':batchUpdate'))!.body as { requests: { addSheet: { properties: { title: string } } }[] };
     expect(add.requests.map((r) => r.addSheet.properties.title)).toEqual(['Buku Kas']);
@@ -59,5 +59,23 @@ describe('klien Google Sheets', () => {
     expect(write.valueInputOption).toBe('RAW');
     expect(write.data.map((d) => d.range)).toEqual(["'Ringkasan'!A1", "'Buku Kas'!A1"]);
     expect(g.calls.filter((c) => c.url.includes('oauth2'))).toHaveLength(1); // token dipakai ulang
+  });
+});
+
+describe('tampilan sheet', () => {
+  const tabs = [
+    { title: 'Status Iuran', rows: [['Anggota', 'Okt', 'Status'], ['Ani', 10000, 'Lunas']], table: true, moneyCols: [1], status: { col: 2, good: ['Lunas'], bad: ['Kurang'] } },
+  ];
+  const kinds = (reqs: object[]) => reqs.map((r) => Object.keys(r)[0]);
+  test('tab baru: rupiah, warna status, filter, pita, peringatan edit', () => {
+    const reqs = formatRequests(tabs, new Map([['Status Iuran', 7]]), [{ properties: { sheetId: 7, title: 'Status Iuran' } }]);
+    expect(kinds(reqs)).toEqual(expect.arrayContaining(['addBanding', 'setBasicFilter', 'addConditionalFormatRule', 'addProtectedRange', 'autoResizeDimensions']));
+    expect(JSON.stringify(reqs)).toContain('CURRENCY');
+  });
+  test('sinkron ulang: pita & aturan warna lama dihapus dulu, peringatan tidak dobel', () => {
+    const meta = [{ properties: { sheetId: 7, title: 'Status Iuran' }, bandedRanges: [{ bandedRangeId: 3 }], conditionalFormats: [{}, {}], protectedRanges: [{ protectedRangeId: 1, description: PROTECT_NOTE }] }];
+    const reqs = formatRequests(tabs, new Map([['Status Iuran', 7]]), meta);
+    expect(reqs.slice(0, 3)).toEqual([{ deleteBanding: { bandedRangeId: 3 } }, { deleteConditionalFormatRule: { sheetId: 7, index: 1 } }, { deleteConditionalFormatRule: { sheetId: 7, index: 0 } }]);
+    expect(kinds(reqs)).not.toContain('addProtectedRange');
   });
 });

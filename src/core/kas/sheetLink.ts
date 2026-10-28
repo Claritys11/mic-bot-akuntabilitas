@@ -187,7 +187,8 @@ export async function collectSheetOffers(at: Date): Promise<OutgoingMessage[]> {
     'kas.amount': { $gt: 0 },
     'kas.sheetId': null,
     'kas.sheetOfferedAt': null,
-    'kas.setAt': { $lte: new Date(at.getTime() - OFFER_AFTER_MS) },
+    // Kelas yang mengatur kas sebelum kolom setAt ada (kosong) juga ditawari.
+    'kas.setAt': { $not: { $gt: new Date(at.getTime() - OFFER_AFTER_MS) } },
     pilotMode: { $ne: 'jeda' },
   })
     .limit(50)

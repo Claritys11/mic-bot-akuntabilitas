@@ -8,6 +8,14 @@ export type Cell = string | number;
 export interface SheetTab {
   title: string;
   rows: Cell[][];
+  /** Baris 1 = judul kolom tabel → header berwarna, baris belang, filter, baris 1 dibekukan. */
+  table: boolean;
+  /** Kolom (0-based) berisi rupiah → tampil "Rp10.000" tapi tetap angka (bisa dijumlah/diurutkan). */
+  moneyCols?: number[];
+  /** Kolom status → diwarnai menurut awal teksnya (hijau/kuning/merah). */
+  status?: { col: number; good: string[]; wait?: string[]; bad: string[] };
+  /** Lebar kolom tetap (piksel); tanpa ini kolom dipaskan dengan isinya. */
+  widths?: number[];
 }
 
 export const MARKER_LABEL = 'ID kelas (jangan diubah)';
@@ -64,19 +72,25 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
   const spent = -i.entries.filter((e) => e.amount < 0 && e.kind === 'pengeluaran').reduce((s, e) => s + e.amount, 0);
 
   const ringkasan: Cell[][] = [
-    ['Kas kelas', i.className],
-    ['Iuran', `${rupiah(i.amount)} / ${i.period === 'bulanan' ? 'bulan' : 'minggu'}`],
+    [`Laporan Kas ${i.className}`],
+    [`Diperbarui otomatis ${formatWIB(i.now)}`],
+    [],
     ['Saldo', balance(i.entries)],
     ['Total masuk', income],
     ['Total pengeluaran', spent],
-    ['Periode berjalan', periodLabel(current)],
-    ['Sudah lunas periode ini', statusNow.paid.length],
-    ['Belum lunas periode ini', statusNow.unpaid.length],
-    ['Diperbarui', formatWIB(i.now)],
-    [MARKER_LABEL, i.marker],
     [],
-    ['Sheet ini diisi otomatis oleh MIC-Bot dari catatan kas kelas. Jangan ubah tab buatan bot — tulis catatan sendiri di tab baru.'],
-    ['Pengeluaran / pemasukan lain dicatat lewat /kas keluar dan /kas masuk di Discord.'],
+    ['Iuran', `${rupiah(i.amount)} / ${i.period === 'bulanan' ? 'bulan' : 'minggu'}`],
+    ['Periode berjalan', periodLabel(current)],
+    ['Sudah lunas periode ini', `${statusNow.paid.length} dari ${i.members.length} anggota`],
+    ['Belum lunas periode ini', `${statusNow.unpaid.length} anggota`],
+    [],
+    ['Cara pakai'],
+    ['• Semua tab diisi otomatis oleh MIC-Bot dari catatan kas kelas; jangan diedit (Google akan memberi peringatan).'],
+    ['• Catatan sendiri? Buat tab baru — tab itu tidak disentuh bot.'],
+    ['• Pengeluaran / pemasukan lain dicatat lewat /kas keluar dan /kas masuk di Discord.'],
+    ['• Siapa yang belum bayar: tab Status Iuran. Klik ikon filter di baris judul untuk menyaring (mis. per anggota atau periode).'],
+    [],
+    [MARKER_LABEL, i.marker],
   ];
 
   let running = 0;
@@ -107,18 +121,25 @@ export function buildKasSheet(i: KasSheetInput): SheetTab[] {
 
   const bukti: Cell[][] = [['Dikirim', 'Anggota', 'Nominal', 'Periode', 'Status', 'Catatan otomatis']];
   for (const p of [...i.proofs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())) {
-    bukti.push([formatWIB(p.createdAt, 'iso'), p.memberName, p.nominal ?? '', periodLabel(p.period), STATUS_LABEL[p.status] ?? p.status, p.flags.map(i.flagText).join('; ')]);
+    bukti.push([formatWIB(p.createdAt, 'iso'), p.memberName, p.nominal ?? '', periodLabel(p.period), STATUS_LABEL[p.status] ?? p.status, p.flags.map((f) => `• ${i.flagText(f)}`).join('\n')]);
   }
 
   const jejak: Cell[][] = [['Waktu', 'Oleh', 'Tindakan', 'Detail']];
   for (const a of i.audits ?? []) jejak.push([formatWIB(a.at, 'iso'), a.actorName, ACTION_LABEL[a.action] ?? a.action, a.detail]);
 
   return [
-    { title: 'Ringkasan', rows: ringkasan },
-    { title: 'Buku Kas', rows: bukuKas },
-    { title: 'Status Iuran', rows: status },
-    { title: 'Bukti Transfer', rows: bukti },
-    { title: 'Jejak Audit', rows: jejak },
+    { title: 'Ringkasan', rows: ringkasan, table: false, moneyCols: [1], widths: [210, 200] },
+    { title: 'Buku Kas', rows: bukuKas, table: true, moneyCols: [4, 5, 6], widths: [135, 200, 115, 125, 105, 105, 110, 240] },
+    {
+      title: 'Status Iuran',
+      rows: status,
+      table: true,
+      moneyCols: periods.map((_, k) => k + 1),
+      status: { col: periods.length + 1, good: ['Lunas'], bad: ['Kurang'] },
+      widths: [180, ...periods.map(() => 115), 170],
+    },
+    { title: 'Bukti Transfer', rows: bukti, table: true, moneyCols: [2], status: { col: 4, good: ['Disetujui'], wait: ['Menunggu'], bad: ['Ditolak'] }, widths: [135, 180, 105, 125, 120, 420] },
+    { title: 'Jejak Audit', rows: jejak, table: true, widths: [135, 170, 170, 420] },
   ];
 }
 

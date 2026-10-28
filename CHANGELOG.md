@@ -5,6 +5,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/). Ve
 ## [Belum dirilis]
 
 ### Ditambahkan
+- Tampilan laporan Google Sheets: Rupiah (format angka Indonesia, tetap bisa dijumlah), header berwarna, baris belang, filter, warna status (Lunas/Disetujui hijau, Menunggu kuning, Kurang/Ditolak merah), lebar kolom tetap + teks panjang dibungkus, Ringkasan bergaya dasbor dengan panduan "Cara pakai", peringatan Google saat tab buatan bot diedit.
 - Bot menawarkan diri mengingatkan tanpa perlu di-tag: obrolan seperti _"jangan lupa besok …"_, _"takut lupa …"_, _"ingetin aku ya besok …"_ (ada waktunya) → tombol **⏰ Iya, ingetin / Nggak usah**; aktif hanya setelah diiyakan penulisnya (pengingat kelas boleh juga oleh admin). Maks. satu tawaran per kelas tiap 5 menit.
 - Indikator "sedang mengetik…" sebelum setiap balasan (Discord & WhatsApp); saat di-tag, tampil selama bot berpikir.
 - Bot yang memulai laporan kas Google Sheets: tawaran sekali ke tim inti/bendahara → tombol → login Google lewat kode (`google.com/device`) → sheet dibuat di Drive bendahara (scope `drive.file`), link via DM. Token tersegel AES-256-GCM, dicabut saat `/kas sheet link:putus`; berhenti menulis kalau pemilik bukan pengurus kas lagi.

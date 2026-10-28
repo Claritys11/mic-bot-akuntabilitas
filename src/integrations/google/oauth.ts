@@ -80,6 +80,8 @@ class RefreshTokens implements TokenSource {
   }
 }
 
+const LOCALES = ['in_ID', 'id_ID'];
+
 export class GoogleDeviceLinker {
   private readonly clients = new Map<string, SheetsClient>();
 
@@ -125,15 +127,24 @@ export class GoogleDeviceLinker {
   /** Spreadsheet baru di Drive pengurus (default: hanya pemilik yang bisa membuka). */
   async createSheet(credential: string, title: string, tabs: readonly string[]): Promise<{ id: string; title: string }> {
     const token = await new RefreshTokens(this.cfg, credential).accessToken(this.http);
-    const res = await this.http(SHEETS_API, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ properties: { title, locale: 'id_ID', timeZone: 'Asia/Jakarta' }, sheets: tabs.map((t) => ({ properties: { title: t, gridProperties: { frozenRowCount: 1 } } })) }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const d = (await res.json().catch(() => ({}))) as { spreadsheetId?: string; properties?: { title?: string }; error?: { message?: string } };
-    if (!res.ok || !d.spreadsheetId) throw new SheetsError(res.status, d.error?.message ?? `Gagal membuat spreadsheet (HTTP ${res.status})`);
-    return { id: d.spreadsheetId, title: d.properties?.title ?? title };
+    // Locale Indonesia (pemisah ribuan titik) — kodenya tidak konsisten antar layanan Google, jadi dicoba
+    // berurutan; kalau semua ditolak, pakai bawaan akun (cuma memengaruhi tampilan angka).
+    for (const locale of [...LOCALES, null]) {
+      const res = await this.http(SHEETS_API, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          properties: { title, timeZone: 'Asia/Jakarta', ...(locale ? { locale } : {}) },
+          sheets: tabs.map((t) => ({ properties: { title: t } })),
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const d = (await res.json().catch(() => ({}))) as { spreadsheetId?: string; properties?: { title?: string }; error?: { message?: string } };
+      if (res.ok && d.spreadsheetId) return { id: d.spreadsheetId, title: d.properties?.title ?? title };
+      if (locale && res.status === 400 && /locale/i.test(d.error?.message ?? '')) continue;
+      throw new SheetsError(res.status, d.error?.message ?? `Gagal membuat spreadsheet (HTTP ${res.status})`);
+    }
+    throw new SheetsError(400, 'Gagal membuat spreadsheet');
   }
 
   /** Cabut izin di Google (saat diputus). Gagal → diabaikan; token tersegel tetap dihapus pemanggil. */
